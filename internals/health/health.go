@@ -2,14 +2,14 @@ package health
 
 import (
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/eichiarakaki/aegis/internals/config"
+	"github.com/eichiarakaki/aegis/internals/logger"
 )
 
 func DataHealthCheck() error {
-	log.Println("Checking data health...")
+	logger.Info("Checking data health...")
 
 	cfg, err := config.LoadAegis()
 	if err != nil {
@@ -38,14 +38,14 @@ func DataHealthCheck() error {
 }
 
 func SessionsHealthCheck() error {
-	log.Println("Checking session manager health...")
+	logger.Info("Checking session manager health...")
 
 	// Placeholder for session manager health check logic
 	return nil
 }
 
 func CheckAll() error {
-	log.Println("Performing health check...")
+	logger.Info("Performing health check...")
 
 	return nil
 }

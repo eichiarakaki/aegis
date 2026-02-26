@@ -6,6 +6,7 @@ import (
 	"net"
 
 	"github.com/eichiarakaki/aegis/internals/health"
+	"github.com/eichiarakaki/aegis/internals/logger"
 )
 
 type Command struct {
@@ -81,32 +82,31 @@ func HandleAegis(conn net.Conn) {
 		return
 	}
 
-	log.Printf("Received command: %s | Payload: %s\n", cmd.Type, cmd.Payload)
+	logger.Infof("Received command: %s | Payload: %s\n", cmd.Type, cmd.Payload)
 
 	switch cmd.Type {
 
 	case "SESSION_START":
-		log.Println("Starting session:", cmd.Payload)
+		logger.Info("Starting session:", cmd.Payload)
 
 	case "SESSION_STOP":
-		log.Println("Stopping session:", cmd.Payload)
+		logger.Info("Stopping session:", cmd.Payload)
 
 	case "SESSION_LIST":
-		log.Println("Listing sessions")
+		logger.Info("Listing sessions")
 
 	case "COMPONENT_LIST":
-		log.Println("Listing components for session:", cmd.Payload)
+		logger.Info("Listing components for session:", cmd.Payload)
 
 	case "COMPONENT_GET":
-		log.Println("Getting component:", cmd.Payload)
-
+		logger.Info("Getting component:", cmd.Payload)
 	case "COMPONENT_DESCRIBE":
-		log.Println("Describing component:", cmd.Payload)
+		logger.Info("Describing component:", cmd.Payload)
 
 	case "HEALTH_CHECK":
 		handleHealthCheck(cmd.Payload, conn)
 
 	default:
-		log.Println("Unknown command:", cmd.Type)
+		logger.Warn("Unknown command:", cmd.Type)
 	}
 }

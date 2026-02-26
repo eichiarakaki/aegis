@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"log"
 	"net"
+
+	"github.com/eichiarakaki/aegis/internals/logger"
 )
 
 type Component struct {
@@ -23,6 +25,6 @@ func HandleComponentConnections(conn net.Conn) {
 		return
 	}
 
-	log.Printf("Received component: %s | Requires: %v | Supported symbols: %v | Supported timeframes: %v\n", component.Name, component.Requires, component.Supported_symbols, component.Supported_timeframes)
+	logger.Infof("Received component: %s | Requires: %v | Supported symbols: %v | Supported timeframes: %v\n", component.Name, component.Requires, component.Supported_symbols, component.Supported_timeframes)
 
 }
