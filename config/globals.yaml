@@ -1,0 +1,10 @@
+components_socket: "tcp://localhost:5555" # This is the socket where all components will register themselves to the communication engine. The communication engine will keep track of all registered components and their capabilities (e.g., which symbols and timeframes they support).
+# Example of expected payload: 
+# {
+#   component_name: "data_engine", 
+#   supported_symbols: ["BTCUSDT", "ETHUSDT"], 
+#   requires: ["klines", "orderbook"], 
+#   supported_timeframes: ["1m", "15m", "30m", "4h", "1d"]
+# }
+
+mercury_cli_socket: "tcp://localhost:5558" # This is the socket where other components can send commands to the Mercury CLI. The Mercury CLI will listen to this socket for incoming commands and execute them accordingly. For example, a command to start a backtesting session could be sent to this socket with the necessary parameters (e.g., symbol, timeframe, strategy, etc.).

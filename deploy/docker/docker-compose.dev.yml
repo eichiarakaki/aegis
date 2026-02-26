@@ -1,0 +1,11 @@
+services:
+  aegis:
+    build:
+      context: ../../
+      dockerfile: deploy/docker/Dockerfile
+    container_name: aegis
+    ports:
+      - "7000:7000"
+    volumes:
+      - ../../config:/app/config
+    restart: unless-stopped

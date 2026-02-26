@@ -1,0 +1,37 @@
+---
+Todos los topics deben estar 100% sincronizados, dependiendo del tamaño de los datos, un topic puede terminar de mandar todos datos mas rapido que otro al Strategy Engine, pero eso es un grave error si hay topics para más de un tipo de dato, por ejemplo un topic de klines y un topic de orderbook, tendran diferentes velocidades de envio, de nada le servidiria al strategy engine que le llegue un kline del año 2020 y a la vez un order del año 2022.
+
+                  ||
+                  vv
+Dado a ese problema, he llegado a la conclusion de que un event-driven data distributor seria la mejor opcion, en vez de hacer un topic para cada tipo de dato, habra un Central Event Queue ordenado por timestamp:
+Producer A ─┐
+Producer B ─┼──> Central Priority Queue (min-heap por timestamp)
+Producer C ─┘
+
+Modelo determinista estricto
+Todos los eventos se insertan en un heap ordenado por timestamp.
+El motor siempre procesa el evento con menor timestamp disponible.
+Si dos tienen mismo timestamp:
+Se aplica regla de prioridad (Trade > Orderbook > Kline)
+Solo después se publica al Strategy Engine y otros clientes.
+Esto garantiza:
+1. 100% sincronización
+2. determinismo
+3. reproducibilidad
+
+---
+
+El Strategy Engine no sera lo unico que tiene que recibir los datos, otros microservicios como el portfolio manager, risk manager, etc. tambien tienen que recibir datos para que hagan sus propias calculaciones y funciones para mantener la escalabilidad.
+Entonces los componentes se tienen que agrupar por socket, pero ahi surge otro problema: 
+1. Como Mercury sabra cuando todos los componentes esten conectados y listos para distribuir los datos?
+2. Que pasa cuando aun mas conjunto de componentes quieren obtener datos de backtest/live? 
+         ||
+         VV
+Solucion del 1: Subscribirse al canal de datos es algo simple, pero lo importante es saber cuando empezar a distribuir los datos, he pensado en hacer un pequeño script que actue como Trigger, que se enviará a cierto socket donde mercury esté escuchando, con eso se solucionaria el primer problema.
+Solucion del 2: Dado a que actualmente esta diseñado de manera que solo habrá 1 solo socket para backtesting y live, tener mas conjuntos de componentes independientes es imposible. Como se podria solucionar:
+1. Diseñar un socket TCP solo para conexiones de componentes, habrá 2 tipos: Live y Backtest
+2. Mientras el script trigger(Live/Backtest) no sea ejecutado, se podran seguir agregando componentes a Live/Backtest.
+3. Una vez el Trigger de Live o Backtest sea ejecutado: Se creara un proceso donde comience la distribucion de datos Y se limpiará el socket del modo ejecutado.
+
+---
+
