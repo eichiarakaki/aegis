@@ -17,7 +17,7 @@ type Config struct {
 	ComponentsSocket string
 }
 
-func Load() (*Config, error) {
+func LoadGlobals() (*Config, error) {
 	var globals Globals
 	// First check if the environment variable is set, if so, use it directly
 	aegis_env := os.Getenv("AEGIS_CLI_SOCKET")

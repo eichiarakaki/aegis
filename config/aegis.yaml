@@ -1,4 +1,4 @@
-data_path: "../data" # This is the path where all historical data will be stored. The backtesting engine will read historical data from this path to perform backtesting.
+data_path: "./data" # This is the path where all historical data will be stored. The backtesting engine will read historical data from this path to perform backtesting.
 
 # The currencies section defines the symbols, names, types, and supported timeframes for each currency. Health checks will fail if a strategy is triggered for a symbol or timeframe that is not defined in this section. This ensures that the strategy engine and other components only processes existing symbols and timeframes, preventing potential errors and ensuring the integrity of the backtesting and live trading processes.
 currencies:
@@ -33,7 +33,7 @@ backtesting:
   start_date: "2022-01-01"
   end_date: "2023-01-01"
   
-  dispatch_socket: "tcp://localhost:5556" # This is the socket where the backtesting engine will send historical data to the strategy engine. 
+  dispatch_socket: ":5556" # This is the socket where the backtesting engine will send historical data to the strategy engine. 
   # (e.g., topic: "BTCUSDT_1m", payload: {timestamp: 1609459200000, open: 29000, high: 29500, low: 28900, close: 29400, volume: 100})
   # (e.g., topic: "BTCUSDT_orders", payload: {timestamp: 1609459200000, orders: [{id: "order1", symbol: "BTCUSDT", side: "buy", price: 29000, quantity: 1, status: "filled"}]})
   # (e.g., topic: "BTCUSDT_trades", payload: {timestamp: 1609459200000, trades: [{id: "trade1", symbol: "BTCUSDT", side: "buy", price: 29000, quantity: 1}]})
@@ -41,4 +41,4 @@ backtesting:
 live:
   graphql_endpoint: "http://localhost:4000/graphql" # This is the GraphQL endpoint where the live data will be fetched from. The strategy engine will subscribe to this endpoint to receive real-time market data.
 
-  dispatch_socket: "tcp://localhost:5557" # This is the socket where the live data will be sent to the strategy engine. The strategy engine will subscribe to this socket to receive real-time market data. (e.g., topic: "BTCUSDT_1m", payload: {timestamp: 1609459200000, open: 29000, high: 29500, low: 28900, close: 29400, volume: 100})
+  dispatch_socket: ":5557" # This is the socket where the live data will be sent to the strategy engine. The strategy engine will subscribe to this socket to receive real-time market data. (e.g., topic: "BTCUSDT_1m", payload: {timestamp: 1609459200000, open: 29000, high: 29500, low: 28900, close: 29400, volume: 100})

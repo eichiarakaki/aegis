@@ -11,7 +11,9 @@ import (
 )
 
 func main() {
-	cfg, err := config.Load()
+	log.Println("Starting Aegis daemon...")
+
+	cfg, err := config.LoadGlobals()
 	if err != nil {
 		log.Fatal("Failed to load config:", err)
 	}

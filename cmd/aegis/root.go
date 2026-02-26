@@ -120,7 +120,7 @@ var componentDescribeCmd = &cobra.Command{
 /////////////////////////
 
 func sendCommand(cmdType string, payload string) error {
-	cfg, err := config.Load()
+	cfg, err := config.LoadGlobals()
 	if err != nil {
 		return err
 	}
@@ -136,7 +136,43 @@ func sendCommand(cmdType string, payload string) error {
 		Payload: payload,
 	}
 
-	return json.NewEncoder(conn).Encode(command)
+	err = json.NewEncoder(conn).Encode(command)
+	if err != nil {
+		return err
+	}
+
+	// Read response
+	var response map[string]interface{}
+	err = json.NewDecoder(conn).Decode(&response)
+	if err == nil {
+		pretty, _ := json.MarshalIndent(response, "", "  ")
+		fmt.Println(string(pretty))
+	}
+
+	return nil
+}
+
+/////////////////////////
+// HEALTH COMMAND
+/////////////////////////
+
+var healthCmd = &cobra.Command{
+	Use:   "health",
+	Short: "Health checks for Aegis subsystems",
+}
+
+var healthCheckCmd = &cobra.Command{
+	Use:   "check [target]",
+	Short: "Run health check (all|data|sessions)",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		target := args[0]
+
+		err := sendCommand("HEALTH_CHECK", target)
+		if err != nil {
+			log.Fatal(err)
+		}
+	},
 }
 
 /////////////////////////
@@ -156,6 +192,7 @@ func init() {
 	// Tree
 	rootCmd.AddCommand(sessionCmd)
 	rootCmd.AddCommand(componentCmd)
+	rootCmd.AddCommand(healthCmd)
 
 	sessionCmd.AddCommand(sessionStartCmd)
 	sessionCmd.AddCommand(sessionStopCmd)
@@ -164,4 +201,6 @@ func init() {
 	componentCmd.AddCommand(componentListCmd)
 	componentCmd.AddCommand(componentGetCmd)
 	componentCmd.AddCommand(componentDescribeCmd)
+
+	healthCmd.AddCommand(healthCheckCmd)
 }
