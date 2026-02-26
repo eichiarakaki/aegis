@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log"
 	"net"
-	"time"
 )
 
 type Component struct {
@@ -16,9 +15,6 @@ type Component struct {
 
 func main() {
 	socketPath := "/tmp/aegis-components.sock"
-
-	// Espera pequeña por si el daemon aún está levantando
-	time.Sleep(1 * time.Second)
 
 	conn, err := net.Dial("unix", socketPath)
 	if err != nil {
@@ -43,6 +39,7 @@ func main() {
 	err = json.NewEncoder(conn).Encode(component)
 	if err != nil {
 		log.Fatal("Failed to send component:", err)
+		return
 	}
 
 	log.Println("Component registered successfully")
