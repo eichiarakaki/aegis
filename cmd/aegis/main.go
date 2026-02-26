@@ -2,8 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net"
+	"os"
+
+	"github.com/eichiarakaki/aegis/internals/config"
 )
 
 type Command struct {
@@ -11,43 +15,52 @@ type Command struct {
 	Payload string `json:"payload"`
 }
 
-func handleConnection(conn net.Conn) {
+func sendCommand(cmdType string, payload string) error {
+	// Load configuration
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatal("Failed to load config:", err)
+	}
+	socket := cfg.AegisCLISocket
+
+	conn, err := net.Dial("unix", socket)
+	if err != nil {
+		return err
+	}
 	defer conn.Close()
 
-	var cmd Command
-	err := json.NewDecoder(conn).Decode(&cmd)
-	if err != nil {
-		log.Println("Invalid command:", err)
-		return
+	cmd := Command{
+		Type:    cmdType,
+		Payload: payload,
 	}
 
-	log.Printf("Received command: %s | Payload: %s\n", cmd.Type, cmd.Payload)
-
-	switch cmd.Type {
-	case "START_SESSION":
-		log.Println("Starting session...")
-	case "STOP_SESSION":
-		log.Println("Stopping session...")
-	default:
-		log.Println("Unknown command")
-	}
+	return json.NewEncoder(conn).Encode(cmd)
 }
 
 func main() {
-	listener, err := net.Listen("tcp", ":7000")
-	if err != nil {
-		log.Fatal(err)
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: aegis-cli start|stop")
+		return
 	}
-	defer listener.Close()
 
-	log.Println("Aegis daemon listening on :7000")
-
-	for {
-		conn, err := listener.Accept()
+	switch os.Args[1] {
+	case "start":
+		err := sendCommand("START_SESSION", "dev")
 		if err != nil {
-			log.Println("Connection error:", err)
-			continue
+			fmt.Println("Error:", err)
+			return
 		}
-		go handleConnection(conn)
+		fmt.Println("Session started")
+
+	case "stop":
+		err := sendCommand("STOP_SESSION", "")
+		if err != nil {
+			fmt.Println("Error:", err)
+			return
+		}
+		fmt.Println("Session stopped")
+
+	default:
+		fmt.Println("Unknown command")
 	}
 }

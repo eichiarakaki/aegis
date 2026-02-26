@@ -7,16 +7,16 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o aegis ./cmd/aegis
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o aegis-cli ./cmd/aegis-cli
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o aegis ./cmd/aegisd
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o aegis-cli ./cmd/aegis
 
 FROM alpine:latest
 
 WORKDIR /app
 
+COPY --from=builder /app/aegisd .
 COPY --from=builder /app/aegis .
-COPY --from=builder /app/aegis-cli .
 
 EXPOSE 7000
 
-CMD ["./aegis"]
+CMD ["./aegisd"]
