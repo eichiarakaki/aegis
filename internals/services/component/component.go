@@ -5,20 +5,14 @@ import (
 	"log"
 	"net"
 
+	"github.com/eichiarakaki/aegis/internals/core"
 	"github.com/eichiarakaki/aegis/internals/logger"
 )
-
-type Component struct {
-	Name                 string   `json:"component_name"`
-	Requires             []string `json:"requires"` // klines, orders, etc.
-	Supported_symbols    []string `json:"supported_symbols"`
-	Supported_timeframes []string `json:"supported_timeframes"`
-}
 
 func HandleComponentConnections(conn net.Conn) {
 	defer conn.Close()
 
-	var component Component
+	var component core.Component
 	err := json.NewDecoder(conn).Decode(&component)
 	if err != nil {
 		log.Println("Invalid component:", err)
