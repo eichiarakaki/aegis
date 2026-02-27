@@ -21,14 +21,20 @@ func NewCDNDownloader() *CDNDownloader {
 
 // DownloadFile fetches key from the CDN and writes it to destDir.
 // Skips the download if the file already exists on disk.
-func (d *CDNDownloader) DownloadFile(key, destDir string) error {
+func (d *CDNDownloader) DownloadFile(key, destDir string, overwriteDownloadedFiles bool) error {
 	fileURL := cdnBaseURL + "/" + key
 	filename := filepath.Base(key)
 	destPath := filepath.Join(destDir, filename)
 
 	if _, err := os.Stat(destPath); err == nil {
-		logger.Infof("SKIP %s", filename)
-		return nil
+		if !overwriteDownloadedFiles {
+			logger.Infof("SKIP %s", filename)
+			return nil
+		}
+		logger.Infof("OVERWRITE %s", filename)
+		if err := os.Remove(destPath); err != nil {
+			return fmt.Errorf("remove existing file %s: %w", destPath, err)
+		}
 	}
 
 	body, statusCode, err := doGetWithRetry(fileURL)

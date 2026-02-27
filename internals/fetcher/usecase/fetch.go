@@ -12,10 +12,7 @@ import (
 	"github.com/eichiarakaki/aegis/internals/logger"
 )
 
-const (
-	basePrefix = "data/futures/um/daily/"
-	maxWorkers = 5
-)
+const basePrefix = "data/futures/um/daily/"
 
 // FetchUseCase orchestrates the discovery and download of all remote files.
 type FetchUseCase struct {
@@ -32,13 +29,21 @@ func NewFetchUseCase(lister domain.ObjectLister, downloader domain.FileDownloade
 // then downloads them concurrently using a worker pool.
 // Returns the total number of files queued.
 func (uc *FetchUseCase) Run(dataPath string) int {
+	cfg := config.LoadAegisFetcher()
+
+	// If downloading is disabled in config, skip the entire download phase.
+	if cfg.Download.Enable == false {
+		logger.Info("Download disabled in config — skipping download phase")
+		return 0
+	}
+
 	prefixes := buildPrefixes(dataPath)
 	jobs := make(chan domain.Job, 1000)
 
 	var wg sync.WaitGroup
-	for i := 0; i < maxWorkers; i++ {
+	for i := 0; i < cfg.Download.MaxConcurrentDownloads; i++ {
 		wg.Add(1)
-		go uc.worker(i+1, jobs, &wg)
+		go uc.worker(i+1, jobs, &wg, cfg.Download.OverwriteDownloadedFiles)
 	}
 
 	totalFiles := 0
@@ -70,10 +75,10 @@ func (uc *FetchUseCase) Run(dataPath string) int {
 }
 
 // worker consumes jobs from the channel, calling the downloader for each one.
-func (uc *FetchUseCase) worker(id int, jobs <-chan domain.Job, wg *sync.WaitGroup) {
+func (uc *FetchUseCase) worker(id int, jobs <-chan domain.Job, wg *sync.WaitGroup, overwriteDownloadedFiles bool) {
 	defer wg.Done()
 	for j := range jobs {
-		if err := uc.downloader.DownloadFile(j.Key, j.DestDir); err != nil {
+		if err := uc.downloader.DownloadFile(j.Key, j.DestDir, overwriteDownloadedFiles); err != nil {
 			fmt.Fprintf(os.Stderr, "[ERR] worker %d: %v\n", id, err)
 		}
 	}
@@ -98,11 +103,7 @@ func buildPrefixes(dataPath string) []domain.Prefix {
 	var prefixes []domain.Prefix
 
 	// Load symbols and intervals from config
-	cfg, err := config.LoadAegisFetcher()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
-		return prefixes
-	}
+	cfg := config.LoadAegisFetcher()
 
 	for _, sym := range cfg.Cryptocurrencies {
 		for _, dt := range sym.DataTypes {

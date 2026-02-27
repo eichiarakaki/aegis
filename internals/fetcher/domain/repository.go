@@ -7,7 +7,7 @@ type ObjectLister interface {
 
 // FileDownloader is the port for downloading a remote object to disk.
 type FileDownloader interface {
-	DownloadFile(key, destDir string) error
+	DownloadFile(key, destDir string, overwriteDownloadedFiles bool) error
 }
 
 // ChecksumVerifier is the port for validating file integrity.
@@ -17,5 +17,5 @@ type ChecksumVerifier interface {
 
 // Extractor is the port for decompressing downloaded archives.
 type Extractor interface {
-	UnzipAll(dataPath string) (failures int)
+	UnzipAll(dataPath string, removeAfterExtraction bool, overrideExtractedFiles bool, extractFiles bool) (failures int)
 }
