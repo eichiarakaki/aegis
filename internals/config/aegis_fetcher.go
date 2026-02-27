@@ -1,9 +1,9 @@
 package config
 
 import (
-	"fmt"
 	"os"
 
+	"github.com/eichiarakaki/aegis/internals/logger"
 	"gopkg.in/yaml.v3"
 )
 
@@ -13,29 +13,67 @@ type Cryptocurrency struct {
 	Intervals []string `yaml:"intervals"`
 }
 
-type AegisFetcherConfig struct {
-	Cryptocurrencies []Cryptocurrency `yaml:"cryptocurrencies"`
+type Download struct {
+	Enable                   bool `yaml:"enable"`
+	MaxConcurrentDownloads   int  `yaml:"max_concurrent_downloads"`
+	OverwriteDownloadedFiles bool `yaml:"overwrite_downloaded_files"`
 }
 
-func LoadAegisFetcher() (*AegisFetcherConfig, error) {
+type Extraction struct {
+	Enable                 bool `yaml:"enable"`
+	RemoveAfterExtraction  bool `yaml:"remove_after_extraction"`
+	OverrideExtractedFiles bool `yaml:"override_extracted_files"`
+}
+
+type AegisFetcherConfig struct {
+	SkipChecksumVerification bool             `yaml:"skip_checksum_verification"`
+	Extraction               Extraction       `yaml:"extraction"`
+	Download                 Download         `yaml:"download"`
+	Cryptocurrencies         []Cryptocurrency `yaml:"cryptocurrencies"`
+}
+
+func DefaultAegisFetcherConfig() *AegisFetcherConfig {
+	return &AegisFetcherConfig{
+		SkipChecksumVerification: false,
+		Extraction: Extraction{
+			Enable:                 true,
+			RemoveAfterExtraction:  false,
+			OverrideExtractedFiles: false,
+		},
+		Download: Download{
+			Enable:                   true,
+			MaxConcurrentDownloads:   5,
+			OverwriteDownloadedFiles: false,
+		},
+		Cryptocurrencies: []Cryptocurrency{},
+	}
+}
+
+func LoadAegisFetcher() *AegisFetcherConfig {
 	var aegis AegisFetcherConfig
 
 	filePath := "config/aegis-fetcher.yaml"
 
 	data, err := os.ReadFile(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read config file: %w", err)
+		logger.Errorf("Failed to read config file: %v\n", err)
+		return DefaultAegisFetcherConfig()
 	}
 
 	if err := yaml.Unmarshal(data, &aegis); err != nil {
-		return nil, fmt.Errorf("failed to parse yaml: %w", err)
+		logger.Errorf("Failed to parse yaml: %v\n", err)
+		return DefaultAegisFetcherConfig()
 	}
 
 	if aegis.Cryptocurrencies == nil {
-		return nil, fmt.Errorf("cryptocurrencies not defined in aegis-fetcher.yaml")
+		logger.Warn("No cryptocurrencies defined in config — no data will be fetched")
+		aegis.Cryptocurrencies = []Cryptocurrency{}
 	}
 
 	return &AegisFetcherConfig{
-		Cryptocurrencies: aegis.Cryptocurrencies,
-	}, nil
+		SkipChecksumVerification: aegis.SkipChecksumVerification,
+		Extraction:               aegis.Extraction,
+		Download:                 aegis.Download,
+		Cryptocurrencies:         aegis.Cryptocurrencies,
+	}
 }

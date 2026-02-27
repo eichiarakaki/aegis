@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"github.com/eichiarakaki/aegis/internals/config"
 	"github.com/eichiarakaki/aegis/internals/fetcher/domain"
 	"github.com/eichiarakaki/aegis/internals/logger"
 )
@@ -18,6 +19,13 @@ func NewChecksumUseCase(verifier domain.ChecksumVerifier) *ChecksumUseCase {
 // Run validates every .CHECKSUM sidecar found under dataPath.
 // Returns the number of failures.
 func (uc *ChecksumUseCase) Run(dataPath string) int {
+	aegisFetcherCfg := config.LoadAegisFetcher()
+
+	if aegisFetcherCfg.SkipChecksumVerification {
+		logger.Warn("Checksum verification is disabled via config — skipping integrity checks")
+		return 0
+	}
+
 	failures := uc.verifier.VerifyAllChecksums(dataPath)
 
 	if failures > 0 {

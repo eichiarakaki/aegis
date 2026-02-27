@@ -21,12 +21,12 @@ import (
 //  2. Verify    — validate SHA-256 checksums for every downloaded file.
 //  3. Extract   — decompress every .zip archive in the output directory.
 func main() {
-	cfg, err := config.LoadAegis()
+	aegisCfg, err := config.LoadAegis()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
 		return
 	}
-	dataPath := cfg.DataPath
+	dataPath := aegisCfg.DataPath
 
 	logger.Infof("Output dir: %s", dataPath)
 	logger.Info(strings.Repeat("=", 60))

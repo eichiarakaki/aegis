@@ -1,5 +1,29 @@
 # Aegis Fetcher Configuration
 
+# If false, the fetcher will run a data integrity checker after fetching data. This can be used to verify that the fetched data is complete and correct. However, it may increase the total execution time of the fetcher, especially if there are many files to check. Set to true to skip the integrity check and fetch data faster, but with less assurance of data quality
+skip_checksum_verification: true
+
+extraction:
+  # If true, the fetcher will extract .zip files after downloading them. If false, it will skip the extraction step.
+  enable: true
+
+  # If true, the fetcher will overwrite existing files in the output directory when extracting .zip files. If false, the fetcher will skip extracting files that already exist in the output directory. This can be useful for testing the fetching process or if you have already extracted the files and just want to re-download them without re-extracting.
+  overwrite_extracted_files: false
+
+  # If true, the fetcher will remove the original .zip files after successfully extracting their contents. This can help save disk space, but it also means that you won't have the original archives for backup or re-extraction if needed. Set to false to keep the .zip files after extraction, which can be useful for debugging or archival purposes, but may consume more disk space
+  remove_after_extraction: false
+
+download:
+  # If true, the fetcher will download files from the S3 bucket. If false, it will skip the download step. This can be useful for testing the extraction process or if you have already downloaded the files and just want to re-extract them
+  enable: false
+
+  # If true, the fetcher will overwrite existing files in the output directory. If false, the fetcher will skip downloading files that already exist in the output directory
+  overwrite_downloaded_files: false
+
+  # The maximum number of concurrent downloads. This can help speed up the fetching process, but it may also increase the load on your network and the S3 bucket. Adjust this value based on your network bandwidth and the expected number of files to download. A higher value may lead to faster downloads, but it can also cause timeouts or throttling if the S3 bucket has rate limits. A lower value may be more stable, but it will take longer to fetch all the data
+  max_concurrent_downloads: 5
+
+
 # This file defines the cryptocurrencies, data types, and intervals that the Aegis Fetcher will use to fetch data from the S3 bucket. Each cryptocurrency can have multiple data types and intervals
 cryptocurrencies:
   - symbol: BTCUSDT
@@ -15,16 +39,16 @@ cryptocurrencies:
       - 5m
       - 1h
       - 1d
-  - symbol: ETHUSDT
-    datatypes:
-      - klines
-      - liquidationSnapshot
-      - metrics
-      - aggTrades
-      - bookDepth
-      - trades
-    intervals:
-      - 1m
-      - 5m
-      - 1h
-      - 1d
+  # - symbol: ETHUSDT
+  #   datatypes:
+  #     - klines
+  #     - liquidationSnapshot
+  #     - metrics
+  #     - aggTrades
+  #     - bookDepth
+  #     - trades
+  #   intervals:
+  #     - 1m
+  #     - 5m
+  #     - 1h
+  #     - 1d

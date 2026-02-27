@@ -1,0 +1,1 @@
+Aegis Fetcher was implemented due to the need to collect data from a platform. It could have been a completely separate program, but it needed a structure compatible with Aegis, so I decided to implement a Fetcher specifically for Aegis.
