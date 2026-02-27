@@ -1,0 +1,30 @@
+# Aegis Fetcher Configuration
+
+# This file defines the cryptocurrencies, data types, and intervals that the Aegis Fetcher will use to fetch data from the S3 bucket. Each cryptocurrency can have multiple data types and intervals
+cryptocurrencies:
+  - symbol: BTCUSDT
+    datatypes:
+      - klines
+      - liquidationSnapshot
+      - metrics
+      - aggTrades
+      - bookDepth
+      - trades
+    intervals:
+      - 1m
+      - 5m
+      - 1h
+      - 1d
+  - symbol: ETHUSDT
+    datatypes:
+      - klines
+      - liquidationSnapshot
+      - metrics
+      - aggTrades
+      - bookDepth
+      - trades
+    intervals:
+      - 1m
+      - 5m
+      - 1h
+      - 1d
