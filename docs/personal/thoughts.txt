@@ -35,3 +35,67 @@ Solucion del 2: Dado a que actualmente esta diseñado de manera que solo habrá 
 
 ---
 
+CONEXION DE COMPONENTES CON AEGIS
+Los componentes primero se conectaran via el socket especial 'aegis-components.sock'
+Ahí Aegis tiene que pasar las configuraciones a cada componente, que configuraciones? por ejemplo los topics que el componente requiere, el socket donde se estara streameando esos datos, etc.
+Pero como lograr eso? recordemos que al conectarse a 'aegis-components.sock' el componente primero envia un payload similar a este:
+# Example of expected payload: 
+# {
+#   component_name: "data_engine", 
+#   supported_symbols: ["BTCUSDT", "ETHUSDT"], 
+#   requires: ["klines", "orderbook"], 
+#   supported_timeframes: ["1m", "15m", "30m", "4h", "1d"]
+# }
+
+   ||
+   VV
+COMO HACERLO
+El objetivo de conectar los componentes al socket /tmp/aegis-components.sock es registarse en Aegis y mantener una comunicación abierta para recibir o enviar COMANDOS.
+Ejemplo de comandos del componente a Aegis:
+- {"COMMAND": "READY"}
+- {"COMMAND": "ACK"}
+- {"COMMAND": "WAIT"}
+- {"COMMAND": "ERROR"}
+- {"COMMAND": "FINISHED"}
+Ejemplo de comandos de Aegis al componente:
+- {"COMMAND": "HEARTBEAT"}
+- {"COMMAND": "STARTED"}
+- {"COMMAND": "WAIT"}
+- {
+    "data_socket": "/tmp/aegis-data-<id>.sock",
+    "topics": ["klines.BTCUSDT.1m", "orderbook.BTCUSDT"]
+}
+
+Ejemplo de flujo:
+1. El componente se conecta a Aegis
+2. El componente envia:
+{
+    "data_socket": "/tmp/aegis-data-<id>.sock",
+    "topics": ["klines.BTCUSDT.1m", "orderbook.BTCUSDT"]
+}
+3. Aegis revuelve: {"COMMAND": "ACK"}
+4. El componente se conecta al data_socket y configura sus conexiones para los topics
+5. El componente se subscribe a los topics
+6. El componente se prepara para recibir los datos
+6. El componente envia {"COMMAND": "READY"} a Aegis
+7. Aegis empieza a streamear datos a los topics
+
+---
+
+CONEXION DE LOS COMPONENTES A SESIONES
+Simplemente necesito que los componentes sepan el UUID de la sesion que se genera manualmente con el comando 'aegis session create <name> --mode <mode>'
+
+PROBLEMA: Pero el problema es, como el componente podria saber el UUID en tiempo de ejecucion?
+Una opcion seria hacer que el componente escoja a cual sesion conectarse al momento de la conexion socket, pero si hay mas de 1 sesion, como podria elegir la sesion correcta?
+
+SOLUCION:
+hacer un comando tipo: aegis session create <session_name> --mode <mode> run --path <path/to/component1> <path/to/component2>
+Este comando internamente lo que hará será 
+1. crear una sesión (opcional)
+2. generar un SessionToken
+3. correr los componentes con variables de entorno con el MISMO SessionToken generado.
+Ejemplo:
+{
+  "component_name": "data_engine",
+  "session_token": "T"
+}
