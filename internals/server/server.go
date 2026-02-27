@@ -17,6 +17,7 @@ func InitDaemon() {
 	cfg, err := config.LoadGlobals()
 	if err != nil {
 		logger.Error("Failed to load config:", err)
+		return
 	}
 
 	aegisSocket := cfg.AegisCLISocket

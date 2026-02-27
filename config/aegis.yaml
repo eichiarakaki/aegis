@@ -1,4 +1,6 @@
-data_path: "./data" # This is the path where all historical data will be stored. The backtesting engine will read historical data from this path to perform backtesting.
+# data_path depends on the operating system and the user's preference. For example, on Linux, it could be "/home/user/aegis_data", while on Windows, it could be "C:\Users\user\aegis_data". It's important to choose a path that has sufficient storage space and is easily accessible for the backtesting engine to read historical data. Additionally, it's recommended to use a dedicated directory for Aegis data to keep it organized and separate from other files on the system.
+# Note: each person has different preferences for where to store their data.
+data_path: "/home/eichi/media/external_hdd/data"
 
 # The currencies section defines the symbols, names, types, and supported timeframes for each currency. Health checks will fail if a strategy is triggered for a symbol or timeframe that is not defined in this section. This ensures that the strategy engine and other components only processes existing symbols and timeframes, preventing potential errors and ensuring the integrity of the backtesting and live trading processes.
 currencies:

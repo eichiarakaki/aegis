@@ -1,0 +1,127 @@
+package usecase
+
+import (
+	"fmt"
+	"os"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/eichiarakaki/aegis/internals/config"
+	"github.com/eichiarakaki/aegis/internals/fetcher/domain"
+	"github.com/eichiarakaki/aegis/internals/logger"
+)
+
+const (
+	basePrefix = "data/futures/um/daily/"
+	maxWorkers = 5
+)
+
+// FetchUseCase orchestrates the discovery and download of all remote files.
+type FetchUseCase struct {
+	lister     domain.ObjectLister
+	downloader domain.FileDownloader
+}
+
+// NewFetchUseCase constructs a FetchUseCase with the given ports.
+func NewFetchUseCase(lister domain.ObjectLister, downloader domain.FileDownloader) *FetchUseCase {
+	return &FetchUseCase{lister: lister, downloader: downloader}
+}
+
+// Run lists all objects for every symbol/dataType/interval combination,
+// then downloads them concurrently using a worker pool.
+// Returns the total number of files queued.
+func (uc *FetchUseCase) Run(dataPath string) int {
+	prefixes := buildPrefixes(dataPath)
+	jobs := make(chan domain.Job, 1000)
+
+	var wg sync.WaitGroup
+	for i := 0; i < maxWorkers; i++ {
+		wg.Add(1)
+		go uc.worker(i+1, jobs, &wg)
+	}
+
+	totalFiles := 0
+
+	for _, p := range prefixes {
+		logger.Infof("Listing: %s", p.S3Prefix)
+
+		keys, err := uc.lister.ListObjects(p.S3Prefix)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[ERR] %v\n", err)
+			continue
+		}
+
+		filtered := filterKeys(keys)
+		logger.Infof("Found %d files", len(filtered))
+		totalFiles += len(filtered)
+
+		for _, k := range filtered {
+			jobs <- domain.Job{Key: k, DestDir: p.DestDir}
+		}
+
+		time.Sleep(300 * time.Millisecond)
+	}
+
+	close(jobs)
+	wg.Wait()
+
+	return totalFiles
+}
+
+// worker consumes jobs from the channel, calling the downloader for each one.
+func (uc *FetchUseCase) worker(id int, jobs <-chan domain.Job, wg *sync.WaitGroup) {
+	defer wg.Done()
+	for j := range jobs {
+		if err := uc.downloader.DownloadFile(j.Key, j.DestDir); err != nil {
+			fmt.Fprintf(os.Stderr, "[ERR] worker %d: %v\n", id, err)
+		}
+	}
+}
+
+// filterKeys retains only .zip, .csv, and .CHECKSUM files.
+func filterKeys(keys []string) []string {
+	var out []string
+	for _, k := range keys {
+		if strings.HasSuffix(k, ".zip") ||
+			strings.HasSuffix(k, ".csv") ||
+			strings.HasSuffix(k, ".CHECKSUM") {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+// buildPrefixes constructs all (S3 prefix, local destination) pairs for every
+// combination of symbol, data type, and kline interval (where applicable).
+func buildPrefixes(dataPath string) []domain.Prefix {
+	var prefixes []domain.Prefix
+
+	// Load symbols and intervals from config
+	cfg, err := config.LoadAegisFetcher()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
+		return prefixes
+	}
+
+	for _, sym := range cfg.Cryptocurrencies {
+		for _, dt := range sym.DataTypes {
+			switch dt {
+			case "klines":
+				for _, interval := range sym.Intervals {
+					prefixes = append(prefixes, domain.Prefix{
+						S3Prefix: fmt.Sprintf("%s%s/%s/%s/", basePrefix, dt, sym.Symbol, interval),
+						DestDir:  fmt.Sprintf("%s/%s/%s/%s", dataPath, sym.Symbol, dt, interval),
+					})
+				}
+			default:
+				prefixes = append(prefixes, domain.Prefix{
+					S3Prefix: fmt.Sprintf("%s%s/%s/", basePrefix, dt, sym.Symbol),
+					DestDir:  fmt.Sprintf("%s/%s/%s", dataPath, sym.Symbol, dt),
+				})
+			}
+		}
+	}
+
+	return prefixes
+}
