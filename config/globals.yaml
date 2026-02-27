@@ -7,4 +7,4 @@ components_socket: "/tmp/aegis-components.sock" # This is the socket where all c
 #   supported_timeframes: ["1m", "15m", "30m", "4h", "1d"]
 # }
 
-aegis_cli_socket: "/tmp/aegis.sock" # This is the socket where other components can send commands to the Aegis CLI. The Aegis CLI will listen to this socket for incoming commands and execute them accordingly. For example, a command to start a backtesting session could be sent to this socket with the necessary parameters (e.g., symbol, timeframe, strategy, etc.).
+aegis_cli_socket: "/tmp/aegis.sock" # This is the socket where the Aegis Daemon will listen for commands from the Aegis CLI. The CLI can send commands to start or stop sessions, check the status of components, or perform other administrative tasks. The Aegis Daemon will process these commands and respond accordingly.

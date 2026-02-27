@@ -15,13 +15,16 @@ extraction:
 
 download:
   # If true, the fetcher will download files from the S3 bucket. If false, it will skip the download step. This can be useful for testing the extraction process or if you have already downloaded the files and just want to re-extract them
-  enable: false
+  enable: true
+
+  start_date: "2024-01-01" # The date from which the fetcher will start fetching data. This should be in the format YYYY-MM-DD.
+  end_date: "2025-12-31" # The date until which the fetcher will fetch data. This should be in the format YYYY-MM-DD.
 
   # If true, the fetcher will overwrite existing files in the output directory. If false, the fetcher will skip downloading files that already exist in the output directory
   overwrite_downloaded_files: false
 
   # The maximum number of concurrent downloads. This can help speed up the fetching process, but it may also increase the load on your network and the S3 bucket. Adjust this value based on your network bandwidth and the expected number of files to download. A higher value may lead to faster downloads, but it can also cause timeouts or throttling if the S3 bucket has rate limits. A lower value may be more stable, but it will take longer to fetch all the data
-  max_concurrent_downloads: 5
+  max_concurrent_downloads: 8
 
 
 # This file defines the cryptocurrencies, data types, and intervals that the Aegis Fetcher will use to fetch data from the S3 bucket. Each cryptocurrency can have multiple data types and intervals
@@ -37,7 +40,10 @@ cryptocurrencies:
     intervals:
       - 1m
       - 5m
+      - 15m
+      - 30m
       - 1h
+      - 4h
       - 1d
   # - symbol: ETHUSDT
   #   datatypes:

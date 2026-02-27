@@ -10,6 +10,7 @@ import (
 
 	"github.com/eichiarakaki/aegis/internals/logger"
 	"github.com/eichiarakaki/aegis/internals/server/handlers"
+	"github.com/eichiarakaki/aegis/internals/server/handlers/sessions"
 )
 
 type Command struct {
@@ -31,22 +32,41 @@ func HandleAegis(conn net.Conn) {
 
 	switch cmd.Type {
 
+	// -- Session lifecycle ------------------------------------------
+
+	case "SESSION_CREATE":
+		sessions.HandleSessionCreate(cmd.Payload, conn)
+
+	case "SESSION_CREATE_RUN":
+		sessions.HandleSessionCreateRun(cmd.Payload, conn)
+
+	case "SESSION_ATTACH":
+		sessions.HandleSessionAttach(cmd.Payload, conn)
+
 	case "SESSION_START":
-		logger.Info("Starting session:", cmd.Payload)
+		sessions.HandleSessionStart(cmd.Payload, conn)
 
 	case "SESSION_STOP":
-		logger.Info("Stopping session:", cmd.Payload)
+		sessions.HandleSessionStop(cmd.Payload, conn)
 
 	case "SESSION_LIST":
-		logger.Info("Listing sessions")
+		sessions.HandleSessionList(conn)
+
+	case "SESSION_DELETE":
+		sessions.HandleSessionDelete(cmd.Payload, conn)
+
+	// -- Component inspection --------------------------------------
 
 	case "COMPONENT_LIST":
 		logger.Info("Listing components for session:", cmd.Payload)
 
 	case "COMPONENT_GET":
 		logger.Info("Getting component:", cmd.Payload)
+
 	case "COMPONENT_DESCRIBE":
 		logger.Info("Describing component:", cmd.Payload)
+
+	// -- Health ----------------------------------------------------
 
 	case "HEALTH_CHECK":
 		handlers.HandleHealthCheck(cmd.Payload, conn)

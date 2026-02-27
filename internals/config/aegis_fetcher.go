@@ -14,9 +14,11 @@ type Cryptocurrency struct {
 }
 
 type Download struct {
-	Enable                   bool `yaml:"enable"`
-	MaxConcurrentDownloads   int  `yaml:"max_concurrent_downloads"`
-	OverwriteDownloadedFiles bool `yaml:"overwrite_downloaded_files"`
+	Enable                   bool   `yaml:"enable"`
+	StartDate                string `yaml:"start_date"`
+	EndDate                  string `yaml:"end_date"`
+	MaxConcurrentDownloads   int    `yaml:"max_concurrent_downloads"`
+	OverwriteDownloadedFiles bool   `yaml:"overwrite_downloaded_files"`
 }
 
 type Extraction struct {
@@ -42,6 +44,8 @@ func DefaultAegisFetcherConfig() *AegisFetcherConfig {
 		},
 		Download: Download{
 			Enable:                   true,
+			StartDate:                "2023-01-01",
+			EndDate:                  "2023-12-31",
 			MaxConcurrentDownloads:   5,
 			OverwriteDownloadedFiles: false,
 		},
