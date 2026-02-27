@@ -19,6 +19,15 @@ func HandleComponentConnections(conn net.Conn) {
 		return
 	}
 
-	logger.Infof("Received component: %s | Requires: %v | Supported symbols: %v | Supported timeframes: %v\n", component.Name, component.Requires, component.Supported_symbols, component.Supported_timeframes)
+	if err := component.ValidateInterval(); err != nil {
+		logger.Warnf("Component %s has invalid interval: %v", component.Name, err)
+		return
+	}
 
+	for _, req := range component.Requires {
+		logger.Debugf("Component %s requires: klines=%t, liquidation_snapshots=%t, metrics=%t, agg_trades=%t, book_depth=%t, trades=%t",
+			component.Name, req.Klines, req.LiquidationSnapshots, req.Metrics, req.AggTrades, req.BookDepth, req.Trades)
+	}
+	logger.Debugf("Component %s supports symbols: %v", component.Name, component.Supported_symbols)
+	logger.Debugf("Component %s supports timeframes: %v", component.Name, component.Supported_timeframes)
 }

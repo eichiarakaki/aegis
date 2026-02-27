@@ -27,23 +27,35 @@ func NewFetchUseCase(lister domain.ObjectLister, downloader domain.FileDownloade
 
 // Run lists all objects for every symbol/dataType/interval combination,
 // then downloads them concurrently using a worker pool.
+// Only files whose embedded date falls within [StartDate, EndDate] are downloaded.
 // Returns the total number of files queued.
 func (uc *FetchUseCase) Run(dataPath string) int {
 	cfg := config.LoadAegisFetcher()
 
-	// If downloading is disabled in config, skip the entire download phase.
-	if cfg.Download.Enable == false {
+	if !cfg.Download.Enable {
 		logger.Info("Download disabled in config — skipping download phase")
 		return 0
 	}
 
-	prefixes := buildPrefixes(dataPath)
+	// Parse date range from config strings ("2024-01-21" format)
+	dateRange, err := parseDateRange(cfg.Download.StartDate, cfg.Download.EndDate)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[ERR] invalid date range in config: %v\n", err)
+		return 0
+	}
+
+	logger.Infof("Date range: %s → %s",
+		dateRange.Start.Format("2006-01-02"),
+		dateRange.End.Format("2006-01-02"),
+	)
+
+	prefixes := buildPrefixes(dataPath, cfg)
 	jobs := make(chan domain.Job, 1000)
 
 	var wg sync.WaitGroup
 	for i := 0; i < cfg.Download.MaxConcurrentDownloads; i++ {
 		wg.Add(1)
-		go uc.worker(i+1, jobs, &wg, cfg.Download.OverwriteDownloadedFiles)
+		go uc.worker(i+1, jobs, &wg, cfg.Download.OverwriteDownloadedFiles, dateRange)
 	}
 
 	totalFiles := 0
@@ -74,11 +86,32 @@ func (uc *FetchUseCase) Run(dataPath string) int {
 	return totalFiles
 }
 
+// parseDateRange parses two "2006-01-02" strings into a domain.DateRange.
+func parseDateRange(start, end string) (domain.DateRange, error) {
+	const layout = "2006-01-02"
+
+	s, err := time.Parse(layout, start)
+	if err != nil {
+		return domain.DateRange{}, fmt.Errorf("parsing StartDate %q: %w", start, err)
+	}
+
+	e, err := time.Parse(layout, end)
+	if err != nil {
+		return domain.DateRange{}, fmt.Errorf("parsing EndDate %q: %w", end, err)
+	}
+
+	if e.Before(s) {
+		return domain.DateRange{}, fmt.Errorf("EndDate %q is before StartDate %q", end, start)
+	}
+
+	return domain.DateRange{Start: s, End: e}, nil
+}
+
 // worker consumes jobs from the channel, calling the downloader for each one.
-func (uc *FetchUseCase) worker(id int, jobs <-chan domain.Job, wg *sync.WaitGroup, overwriteDownloadedFiles bool) {
+func (uc *FetchUseCase) worker(id int, jobs <-chan domain.Job, wg *sync.WaitGroup, overwriteDownloadedFiles bool, dateRange domain.DateRange) {
 	defer wg.Done()
 	for j := range jobs {
-		if err := uc.downloader.DownloadFile(j.Key, j.DestDir, overwriteDownloadedFiles); err != nil {
+		if err := uc.downloader.DownloadFile(j.Key, j.DestDir, overwriteDownloadedFiles, dateRange); err != nil {
 			fmt.Fprintf(os.Stderr, "[ERR] worker %d: %v\n", id, err)
 		}
 	}
@@ -99,11 +132,8 @@ func filterKeys(keys []string) []string {
 
 // buildPrefixes constructs all (S3 prefix, local destination) pairs for every
 // combination of symbol, data type, and kline interval (where applicable).
-func buildPrefixes(dataPath string) []domain.Prefix {
+func buildPrefixes(dataPath string, cfg *config.AegisFetcherConfig) []domain.Prefix {
 	var prefixes []domain.Prefix
-
-	// Load symbols and intervals from config
-	cfg := config.LoadAegisFetcher()
 
 	for _, sym := range cfg.Cryptocurrencies {
 		for _, dt := range sym.DataTypes {

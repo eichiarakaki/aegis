@@ -45,6 +45,7 @@ func HandleAegis(conn net.Conn) {
 
 	case "COMPONENT_GET":
 		logger.Info("Getting component:", cmd.Payload)
+
 	case "COMPONENT_DESCRIBE":
 		logger.Info("Describing component:", cmd.Payload)
 

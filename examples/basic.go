@@ -6,11 +6,20 @@ import (
 	"net"
 )
 
+type Requires struct {
+	Klines               bool `json:"klines"`
+	LiquidationSnapshots bool `json:"liquidation_snapshots"`
+	Metrics              bool `json:"metrics"`
+	AggTrades            bool `json:"agg_trades"`
+	BookDepth            bool `json:"book_depth"`
+	Trades               bool `json:"trades"`
+}
+
 type Component struct {
-	Name                 string   `json:"component_name"`
-	Requires             []string `json:"requires"`
-	Supported_symbols    []string `json:"supported_symbols"`
-	Supported_timeframes []string `json:"supported_timeframes"`
+	Name                 string     `json:"component_name"`
+	Requires             []Requires `json:"requires"`
+	Supported_symbols    []string   `json:"supported_symbols"`
+	Supported_timeframes []string   `json:"supported_timeframes"`
 }
 
 func main() {
@@ -23,8 +32,17 @@ func main() {
 	defer conn.Close()
 
 	component := Component{
-		Name:     "basic-strategy",
-		Requires: []string{"klines", "orderbook"},
+		Name: "basic-strategy",
+		Requires: []Requires{
+			{
+				Klines:               true,
+				LiquidationSnapshots: false,
+				Metrics:              false,
+				AggTrades:            false,
+				BookDepth:            false,
+				Trades:               false,
+			},
+		},
 		Supported_symbols: []string{
 			"BTCUSDT",
 			"ETHUSDT",

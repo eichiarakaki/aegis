@@ -1,5 +1,13 @@
 package domain
 
+import "time"
+
+// DateRange holds the inclusive start and end dates for filtering downloads.
+type DateRange struct {
+	Start time.Time
+	End   time.Time
+}
+
 // ObjectLister is the port for listing remote objects under a given prefix.
 type ObjectLister interface {
 	ListObjects(prefix string) ([]string, error)
@@ -7,7 +15,7 @@ type ObjectLister interface {
 
 // FileDownloader is the port for downloading a remote object to disk.
 type FileDownloader interface {
-	DownloadFile(key, destDir string, overwriteDownloadedFiles bool) error
+	DownloadFile(key, destDir string, overwriteDownloadedFiles bool, dateRange DateRange) error
 }
 
 // ChecksumVerifier is the port for validating file integrity.
