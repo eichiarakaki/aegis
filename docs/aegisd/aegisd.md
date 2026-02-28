@@ -18,13 +18,13 @@
 
 2. El componente envia:
 {
-    "data_socket": "/tmp/aegis-data-<id>.sock",
+    "session_token": "<Gets the session token from the Env>",
     "topics": ["klines.BTCUSDT.1m", "orderbook.BTCUSDT"]
 }
 2.1 Asigna un UUID al componente como identificador y se inserta a un hashmap de componentes. (Para evitar nombres duplicados)
 2.2 El HEARTBEAT comienza simultaneamente
 
-3. Aegis revuelve: {"COMMAND": "ACK"}
+3. Aegis devuelve: {"COMMAND": "ACK"}
 
 4. El componente se conecta al data_socket y configura sus conexiones para los topics
 
