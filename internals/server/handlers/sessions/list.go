@@ -10,10 +10,24 @@ import (
 func HandleSessionList(conn net.Conn) {
 	logger.Info("Listing sessions")
 
-	// TODO: fetch session records from the store.
-
-	writeJSON(conn, map[string]interface{}{
-		"status":   "ok",
-		"sessions": []interface{}{},
+	// For now, we return a mock response.
+	writeJSON(conn, map[string]any{
+		"status": "ok",
+		"sessions": []any{
+			map[string]any{
+				"id":         "session-123",
+				"name":       "My Session",
+				"mode":       "live",
+				"state":      "running",
+				"started_at": "2024-01-01T12:00:00Z",
+			},
+			map[string]any{
+				"id":         "session-456",
+				"name":       "Backtest Session",
+				"mode":       "backtest",
+				"state":      "stopped",
+				"started_at": "2024-01-02T08:30:00Z",
+			},
+		},
 	})
 }

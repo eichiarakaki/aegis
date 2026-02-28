@@ -52,6 +52,9 @@ func HandleAegis(conn net.Conn) {
 	case "SESSION_LIST":
 		sessions.HandleSessionList(conn)
 
+	case "SESSION_STATUS":
+		sessions.HandleSessionStatus(conn, cmd.Payload)
+
 	case "SESSION_DELETE":
 		sessions.HandleSessionDelete(cmd.Payload, conn)
 

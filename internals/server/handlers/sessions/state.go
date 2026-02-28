@@ -45,3 +45,22 @@ func HandleSessionStop(payload string, conn net.Conn) {
 		"message":    "session stopped",
 	})
 }
+
+// HandleSessionStatus returns the current status of a session by ID.
+func HandleSessionStatus(conn net.Conn, payload string) {
+	sessionID := strings.TrimSpace(payload)
+	if sessionID == "" {
+		writeError(conn, "session_id cannot be empty")
+		return
+	}
+
+	logger.Infof("Getting status for session: id=%s", sessionID)
+
+	// For now, we return a mock response.
+	writeJSON(conn, map[string]interface{}{
+		"status":     "ok",
+		"session_id": sessionID,
+		"state":      "running",
+		"started_at": "2024-01-01T12:00:00Z",
+	})
+}

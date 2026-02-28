@@ -23,8 +23,8 @@ func HandleSessionCreate(payload string, conn net.Conn) {
 		return
 	}
 
-	if mode != "live" && mode != "backtest" {
-		writeError(conn, "invalid mode: must be 'live' or 'backtest'")
+	if mode != "realtime" && mode != "historical" {
+		writeError(conn, "invalid mode: must be 'realtime' or 'historical'")
 		return
 	}
 
@@ -50,8 +50,8 @@ func HandleSessionCreateRun(payload string, conn net.Conn) {
 		return
 	}
 
-	if mode != "live" && mode != "backtest" {
-		writeError(conn, "invalid mode: must be 'live' or 'backtest'")
+	if mode != "realtime" && mode != "historical" {
+		writeError(conn, "invalid mode: must be 'realtime' or 'historical'")
 		return
 	}
 
