@@ -7,10 +7,10 @@ import (
 	"time"
 )
 
-type StatusType int
+type StateType int
 
 const (
-	SessionCreated StatusType = iota
+	SessionCreated StateType = iota
 	SessionStarting
 	SessionRunning
 	SessionStopping
@@ -18,11 +18,30 @@ const (
 	SessionFinished
 )
 
+func SessionStateToString(state StateType) string {
+	switch state {
+	case SessionCreated:
+		return "SessionCreated"
+	case SessionStarting:
+		return "SessionStarting"
+	case SessionRunning:
+		return "SessionRunning"
+	case SessionStopping:
+		return "SessionStopping"
+	case SessionStopped:
+		return "SessionStopped"
+	case SessionFinished:
+		return "SessionFinished"
+	default: // Unreachable
+		return "Unknown"
+	}
+}
+
 type Session struct {
-	ID     string
-	Name   string
-	Mode   string // realtime | historical
-	Status StatusType
+	ID    string
+	Name  string
+	Mode  string // realtime | historical
+	State StateType
 
 	// Why map instead of slices? O(1) lookups by component name, easier to manage dynamic additions/removals
 	Components map[string]*Component
@@ -40,7 +59,7 @@ func NewSession(id string, name string, mode string) *Session {
 		ID:         id,
 		Name:       name,
 		Mode:       mode,
-		Status:     SessionCreated,
+		State:      SessionCreated,
 		Components: make(map[string]*Component),
 		CreatedAt:  time.Now(),
 	}
@@ -51,12 +70,12 @@ func (s *Session) SetToRunning() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.Status != SessionStarting && s.Status != SessionStopped {
+	if s.State != SessionStarting && s.State != SessionStopped {
 		return errors.New("session cannot be started from the current state")
 	}
 
 	now := time.Now()
-	s.Status = SessionRunning
+	s.State = SessionRunning
 	s.StartedAt = &now
 	return nil
 }
@@ -66,12 +85,12 @@ func (s *Session) SetToStarting() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.Status != SessionCreated {
+	if s.State != SessionCreated {
 		return errors.New("session cannot be started from the current state")
 	}
 
 	now := time.Now()
-	s.Status = SessionStarting
+	s.State = SessionStarting
 	s.StartedAt = &now
 	return nil
 }
@@ -81,12 +100,12 @@ func (s *Session) SetToStop() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.Status != SessionRunning {
+	if s.State != SessionRunning {
 		return errors.New("session is not running")
 	}
 
 	now := time.Now()
-	s.Status = SessionStopped
+	s.State = SessionStopped
 	s.StoppedAt = &now
 	return nil
 }
@@ -96,7 +115,7 @@ func (s *Session) AddComponent(c *Component) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.Status == SessionFinished {
+	if s.State == SessionFinished {
 		return errors.New("cannot add component to finished session")
 	}
 
@@ -109,10 +128,10 @@ func (s *Session) AddComponent(c *Component) error {
 }
 
 // GetStatus returns the current status of the session. It acquires a read lock to ensure thread safety.
-func (s *Session) GetStatus() StatusType {
+func (s *Session) GetStatus() StateType {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.Status
+	return s.State
 }
 
 // SessionStore manages all active sessions in memory. It provides thread-safe methods to add, retrieve, list, and delete sessions.
@@ -186,7 +205,7 @@ func (store *SessionStore) GetSessionsByMode(mode string) []*Session {
 	return sessions
 }
 
-func (store *SessionStore) GetSessionsByStatus(status StatusType) []*Session {
+func (store *SessionStore) GetSessionsByStatus(status StateType) []*Session {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
 	var sessions []*Session

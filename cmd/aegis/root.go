@@ -119,12 +119,12 @@ var sessionListCmd = &cobra.Command{
 	},
 }
 
-var sessionStatusCmd = &cobra.Command{
-	Use:   "status <name|id>",
-	Short: "Gets status of a specific session",
+var sessionStateCmd = &cobra.Command{
+	Use:   "state <name|id>",
+	Short: "Gets state of a specific session",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		err := sendCommand("SESSION_STATUS", args[0])
+		err := sendCommand("SESSION_STATE", args[0])
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -276,7 +276,7 @@ func init() {
 	sessionCmd.AddCommand(sessionAttachCmd)
 	sessionCmd.AddCommand(sessionStartCmd)
 	sessionCmd.AddCommand(sessionStopCmd)
-	sessionCmd.AddCommand(sessionStatusCmd)
+	sessionCmd.AddCommand(sessionStateCmd)
 	sessionCmd.AddCommand(sessionListCmd)
 	sessionCmd.AddCommand(sessionDeleteCmd)
 

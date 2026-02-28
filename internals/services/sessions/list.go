@@ -11,7 +11,7 @@ func ListSessions(sessionStore *core.SessionStore) map[string]any {
 			"id":         session.ID,
 			"name":       session.Name,
 			"mode":       session.Mode,
-			"status":     session.GetStatus(),
+			"state":      core.SessionStateToString(session.GetStatus()),
 			"components": session.Components,
 			"created_at": session.CreatedAt,
 			"started_at": session.StartedAt,
