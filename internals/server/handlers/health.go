@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net"
 
+	"github.com/eichiarakaki/aegis/internals/core"
 	"github.com/eichiarakaki/aegis/internals/logger"
 	"github.com/eichiarakaki/aegis/internals/services/health"
 )
@@ -14,7 +15,7 @@ type HealthResponse struct {
 	Message string `json:"message"`
 }
 
-func HandleHealthCheck(target string, conn net.Conn) {
+func HandleHealthCheck(target string, conn net.Conn, sessionStore *core.SessionStore) {
 	var response HealthResponse
 
 	switch target {

@@ -255,7 +255,7 @@ func sendCommand(cmdType, payload string) error {
 
 func init() {
 	// session create flags
-	sessionCreateCmd.Flags().StringVar(&mode, "mode", "realtime", "Session mode (realtime/historical)")
+	sessionCreateCmd.Flags().StringVar(&mode, "mode", "historical", "Session mode (realtime/historical)")
 	sessionCreateCmd.Flags().StringArrayVar(&paths, "path", []string{}, "Component binary path (repeatable)")
 
 	// session attach flags

@@ -4,22 +4,27 @@ import (
 	"net"
 	"strings"
 
+	"github.com/eichiarakaki/aegis/internals/core"
 	"github.com/eichiarakaki/aegis/internals/logger"
+	"github.com/eichiarakaki/aegis/internals/services/sessions"
 )
 
 // HandleSessionStart manually starts an existing session by ID.
-func HandleSessionStart(payload string, conn net.Conn) {
+func HandleSessionStart(payload string, conn net.Conn, sessionStore *core.SessionStore) {
 	sessionID := strings.TrimSpace(payload)
-	if sessionID == "" {
-		writeError(conn, "session_id cannot be empty")
+
+	err := sessions.StartSession(sessionID, sessionStore)
+	if err != nil {
+		writeJSON(conn, map[string]any{
+			"status":     "error",
+			"session_id": sessionID,
+			"message":    err.Error(),
+		})
+
 		return
 	}
 
-	logger.Infof("Starting session: id=%s", sessionID)
-
-	// TODO: transition session state to running.
-
-	writeJSON(conn, map[string]interface{}{
+	writeJSON(conn, map[string]any{
 		"status":     "ok",
 		"session_id": sessionID,
 		"message":    "session started",
@@ -27,7 +32,7 @@ func HandleSessionStart(payload string, conn net.Conn) {
 }
 
 // HandleSessionStop manually stops a running session by ID.
-func HandleSessionStop(payload string, conn net.Conn) {
+func HandleSessionStop(payload string, conn net.Conn, sessionStore *core.SessionStore) {
 	sessionID := strings.TrimSpace(payload)
 	if sessionID == "" {
 		writeError(conn, "session_id cannot be empty")
@@ -47,7 +52,7 @@ func HandleSessionStop(payload string, conn net.Conn) {
 }
 
 // HandleSessionStatus returns the current status of a session by ID.
-func HandleSessionStatus(conn net.Conn, payload string) {
+func HandleSessionStatus(conn net.Conn, payload string, sessionStore *core.SessionStore) {
 	sessionID := strings.TrimSpace(payload)
 	if sessionID == "" {
 		writeError(conn, "session_id cannot be empty")
