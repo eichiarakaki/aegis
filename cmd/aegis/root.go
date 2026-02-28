@@ -119,6 +119,18 @@ var sessionListCmd = &cobra.Command{
 	},
 }
 
+var sessionStatusCmd = &cobra.Command{
+	Use:   "status <name|id>",
+	Short: "Gets status of a specific session",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		err := sendCommand("SESSION_STATUS", args[0])
+		if err != nil {
+			log.Fatal(err)
+		}
+	},
+}
+
 var sessionDeleteCmd = &cobra.Command{
 	Use:   "delete <name|id>",
 	Short: "Delete a session",
@@ -243,7 +255,7 @@ func sendCommand(cmdType, payload string) error {
 
 func init() {
 	// session create flags
-	sessionCreateCmd.Flags().StringVar(&mode, "mode", "live", "Session mode (live/backtest)")
+	sessionCreateCmd.Flags().StringVar(&mode, "mode", "historical", "Session mode (realtime/historical)")
 	sessionCreateCmd.Flags().StringArrayVar(&paths, "path", []string{}, "Component binary path (repeatable)")
 
 	// session attach flags
@@ -264,6 +276,7 @@ func init() {
 	sessionCmd.AddCommand(sessionAttachCmd)
 	sessionCmd.AddCommand(sessionStartCmd)
 	sessionCmd.AddCommand(sessionStopCmd)
+	sessionCmd.AddCommand(sessionStatusCmd)
 	sessionCmd.AddCommand(sessionListCmd)
 	sessionCmd.AddCommand(sessionDeleteCmd)
 

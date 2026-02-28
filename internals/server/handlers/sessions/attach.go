@@ -5,6 +5,7 @@ import (
 	"net"
 	"strings"
 
+	"github.com/eichiarakaki/aegis/internals/core"
 	"github.com/eichiarakaki/aegis/internals/logger"
 )
 
@@ -39,7 +40,7 @@ func parseRunPayload(payload string) (nameOrID, mode string, paths []string, err
 // HandleSessionAttach attaches new components to an already running session.
 //
 // Payload: <name_or_id>||<path1>,<path2>,...
-func HandleSessionAttach(payload string, conn net.Conn) {
+func HandleSessionAttach(payload string, conn net.Conn, sessionStore *core.SessionStore) {
 	nameOrID, _, paths, err := parseRunPayload(payload)
 	if err != nil {
 		writeError(conn, err.Error())

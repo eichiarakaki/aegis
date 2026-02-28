@@ -99,3 +99,7 @@ Ejemplo:
   "component_name": "data_engine",
   "session_token": "T"
 }
+
+---
+
+ORQUESTATION Y DISTRIBUCION DE DATOS A LAS SESIONES

@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/eichiarakaki/aegis/internals/config"
+	"github.com/eichiarakaki/aegis/internals/core"
 	"github.com/eichiarakaki/aegis/internals/logger"
 	components "github.com/eichiarakaki/aegis/internals/services/component"
 )
@@ -22,6 +23,9 @@ func InitDaemon() {
 
 	aegisSocket := cfg.AegisCLISocket
 	componentsSocket := cfg.ComponentsSocket
+
+	// Creating Sessions Store
+	sessionStore := core.NewSessionStore()
 
 	// Remove old sockets
 	os.RemoveAll(aegisSocket)
@@ -44,7 +48,7 @@ func InitDaemon() {
 				logger.Error("Connection error:", err)
 				continue
 			}
-			go HandleAegis(conn)
+			go HandleAegis(conn, sessionStore)
 		}
 	}()
 
@@ -68,5 +72,6 @@ func InitDaemon() {
 		}
 	}()
 
+	// TODO: Handle this professionally
 	select {}
 }

@@ -4,26 +4,31 @@ import (
 	"net"
 	"strings"
 
+	"github.com/eichiarakaki/aegis/internals/core"
 	"github.com/eichiarakaki/aegis/internals/logger"
+	"github.com/eichiarakaki/aegis/internals/services/sessions"
 )
 
 // HandleSessionDelete processes SESSION_DELETE commands.
 // Payload format: "<session_id>"
-func HandleSessionDelete(payload string, conn net.Conn) {
-	sessionID := strings.TrimSpace(payload)
+func HandleSessionDelete(payload string, conn net.Conn, sessionStore *core.SessionStore) {
+	RequestedSessionID := strings.TrimSpace(payload)
 
-	if sessionID == "" {
-		writeError(conn, "session_id cannot be empty")
+	logger.Infof("Deleting session: id=%s", RequestedSessionID)
+
+	id, err := sessions.DeleteSession(RequestedSessionID, sessionStore)
+	if err != nil {
+		logger.Errorf("Failed to delete session %s: %v", RequestedSessionID, err)
+		writeJSON(conn, map[string]any{
+			"status":  "error",
+			"message": err.Error(),
+		})
 		return
 	}
 
-	logger.Infof("Deleting session: id=%s", sessionID)
-
-	// TODO: look up session by ID, teardown resources, and remove from store.
-
-	writeJSON(conn, map[string]interface{}{
+	writeJSON(conn, map[string]any{
 		"status":     "ok",
-		"session_id": sessionID,
+		"session_id": id,
 		"message":    "session deleted",
 	})
 }

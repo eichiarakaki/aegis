@@ -4,12 +4,14 @@ import (
 	"net"
 	"strings"
 
+	"github.com/eichiarakaki/aegis/internals/core"
 	"github.com/eichiarakaki/aegis/internals/logger"
+	service_sessions "github.com/eichiarakaki/aegis/internals/services/sessions"
 )
 
 // HandleSessionCreate processes SESSION_CREATE commands.
 // Payload format: "<name>|<mode>"
-func HandleSessionCreate(payload string, conn net.Conn) {
+func HandleSessionCreate(payload string, conn net.Conn, sessionStore *core.SessionStore) {
 	parts := strings.SplitN(payload, "|", 2)
 	if len(parts) != 2 {
 		writeError(conn, "invalid payload: expected <name>|<mode>")
@@ -23,19 +25,28 @@ func HandleSessionCreate(payload string, conn net.Conn) {
 		return
 	}
 
-	if mode != "live" && mode != "backtest" {
-		writeError(conn, "invalid mode: must be 'live' or 'backtest'")
+	if mode != "realtime" && mode != "historical" {
+		writeError(conn, "invalid mode: must be 'realtime' or 'historical'")
 		return
 	}
 
-	logger.Infof("Creating session: name=%s mode=%s", name, mode)
+	// Creating the session
+	token, err := service_sessions.CreateSession(name, mode, sessionStore)
+	if err != nil {
+		writeJSON(conn, map[string]any{
+			"status":       "error",
+			"session_name": name,
+			"message":      "failed to create session",
+			"error":        err.Error(),
+		})
+		return
+	}
 
-	// TODO: persist and initialize the session here.
-
-	writeJSON(conn, map[string]interface{}{
-		"status":  "ok",
-		"session": name,
-		"mode":    mode,
+	writeJSON(conn, map[string]any{
+		"status":       "ok",
+		"session_name": name,
+		"session_id":   token,
+		"mode":         mode,
 	})
 }
 
@@ -43,15 +54,15 @@ func HandleSessionCreate(payload string, conn net.Conn) {
 // the provided components under a fresh SessionToken.
 //
 // Payload: <n>|<mode>|<path1>,<path2>,...
-func HandleSessionCreateRun(payload string, conn net.Conn) {
+func HandleSessionCreateRun(payload string, conn net.Conn, sessionStore *core.SessionStore) {
 	name, mode, paths, err := parseRunPayload(payload)
 	if err != nil {
 		writeError(conn, err.Error())
 		return
 	}
 
-	if mode != "live" && mode != "backtest" {
-		writeError(conn, "invalid mode: must be 'live' or 'backtest'")
+	if mode != "realtime" && mode != "historical" {
+		writeError(conn, "invalid mode: must be 'realtime' or 'historical'")
 		return
 	}
 

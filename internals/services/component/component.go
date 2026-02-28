@@ -24,7 +24,7 @@ func HandleComponentConnections(conn net.Conn) {
 		return
 	}
 
-	for _, req := range component.Requires {
+	for _, req := range *component.Requires {
 		logger.Debugf("Component %s requires: klines=%t, liquidation_snapshots=%t, metrics=%t, agg_trades=%t, book_depth=%t, trades=%t",
 			component.Name, req.Klines, req.LiquidationSnapshots, req.Metrics, req.AggTrades, req.BookDepth, req.Trades)
 	}
