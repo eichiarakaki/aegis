@@ -1,17 +1,30 @@
 package sessions
 
 import (
-	"fmt"
-
 	"github.com/eichiarakaki/aegis/internals/core"
 )
 
-func GetSessionStateByID(sessionHint string, sessionStore *core.SessionStore) (string, error) {
-	session, found := GetSessionByHint(sessionHint, sessionStore)
-	if !found {
-		return "", fmt.Errorf("session not found: %s", sessionHint)
+func GetSessionState(cmd core.Command, session *core.Session) (core.Response, error) {
+
+	var components []*core.Component
+
+	for _, component := range session.Components {
+		components = append(components, component)
 	}
-	return core.SessionStateToString(session.State), nil
+
+	sessionState := core.Response{
+		RequestID: cmd.RequestID,
+		Command:   "SESSION_STATE",
+		Status:    "ok",
+		// ErrorCode: "",
+		// Message:   "",
+		Data: map[string]interface{}{
+			"session":    session,
+			"components": components,
+		},
+	}
+
+	return sessionState, nil
 }
 
 // ??? I forgot what I was trying to do here...

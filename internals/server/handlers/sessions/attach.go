@@ -6,20 +6,21 @@ import (
 	"strings"
 
 	"github.com/eichiarakaki/aegis/internals/core"
-	"github.com/eichiarakaki/aegis/internals/logger"
+	"github.com/eichiarakaki/aegis/internals/services/sessions"
+	"github.com/eichiarakaki/aegis/internals/services/sessions/utils"
 )
 
-// parseRunPayload splits the wire format produced by buildRunPayload:
+// parseAttachPayload splits the wire format produced by buildRunPayload:
 //
 //	<name_or_id>|<mode>|<path1>,<path2>,...
-func parseRunPayload(payload string) (nameOrID, mode string, paths []string, err error) {
+func parseAttachPayload(payload string) (hint, mode string, paths []string, err error) {
 	parts := strings.SplitN(payload, "|", 3)
 	if len(parts) != 3 {
 		err = fmt.Errorf("invalid payload: expected <name_or_id>|<mode>|<paths>")
 		return
 	}
 
-	nameOrID = strings.TrimSpace(parts[0])
+	hint = strings.TrimSpace(parts[0])
 	mode = strings.TrimSpace(parts[1])
 
 	for _, p := range strings.Split(parts[2], ",") {
@@ -28,8 +29,8 @@ func parseRunPayload(payload string) (nameOrID, mode string, paths []string, err
 		}
 	}
 
-	if nameOrID == "" {
-		err = fmt.Errorf("session name or ID cannot be empty")
+	if hint == "" {
+		err = fmt.Errorf("invalid payload: missing <name_or_id>|<mode>")
 	}
 	if len(paths) == 0 {
 		err = fmt.Errorf("at least one component path is required")
@@ -40,23 +41,61 @@ func parseRunPayload(payload string) (nameOrID, mode string, paths []string, err
 // HandleSessionAttach attaches new components to an already running session.
 //
 // Payload: <name_or_id>||<path1>,<path2>,...
-func HandleSessionAttach(payload string, conn net.Conn, sessionStore *core.SessionStore) {
-	nameOrID, _, paths, err := parseRunPayload(payload)
+func HandleSessionAttach(cmd core.Command, conn net.Conn, sessionStore *core.SessionStore) {
+	hint, _, paths, err := parseAttachPayload(cmd.Payload)
 	if err != nil {
-		writeError(conn, err.Error())
+		core.WriteJSON(conn, core.Response{
+			RequestID: cmd.RequestID,
+			Command:   "SESSION_ATTACH",
+			Status:    "error",
+			// ErrorCode: "",
+			Message: fmt.Sprint("Attach failed:", err.Error()),
+			Data: map[string]string{
+				"session_id": hint,
+			},
+		})
 		return
 	}
 
-	logger.Infof("Attaching components to session: session=%s paths=%v", nameOrID, paths)
+	session, found := sessions.GetSessionByHint(hint, sessionStore)
+	if !found {
+		core.WriteJSON(conn, core.Response{
+			RequestID: cmd.RequestID,
+			Command:   "SESSION_ATTACH",
+			Status:    "error",
+			// ErrorCode: "",
+			Message: fmt.Sprint("Couldn't find the session"),
+			Data: map[string]string{
+				"session_id": hint,
+			},
+		})
+		return
+	}
 
-	// TODO:
-	//   1. Look up the session by name or ID and retrieve its SessionToken.
-	//   2. Verify the session is in a running state.
-	//   3. Exec each component binary with AEGIS_SESSION_TOKEN=<token>.
+	components, err := sessions.AttachComponents(session, paths)
+	if err != nil {
+		core.WriteJSON(conn, core.Response{
+			RequestID: cmd.RequestID,
+			Command:   "SESSION_ATTACH",
+			Status:    "error",
+			// ErrorCode: "",
+			Message: fmt.Sprint("Attach failed:", err.Error()),
+			Data: map[string]string{
+				"session_id": hint,
+			},
+		})
+		return
+	}
 
-	writeJSON(conn, map[string]interface{}{
-		"status":     "ok",
-		"session":    nameOrID,
-		"components": paths,
+	core.WriteJSON(conn, core.Response{
+		RequestID: cmd.RequestID,
+		Command:   "SESSION_ATTACH",
+		Status:    "ok",
+		//ErrorCode: "",
+		Message: fmt.Sprintf("Attached %v components to %s (%s)", components, session.Name, utils.GetShortHash(session.ID)),
+		Data: map[string]interface{}{
+			"session_id":          session.ID,
+			"attached_components": components,
+		},
 	})
 }

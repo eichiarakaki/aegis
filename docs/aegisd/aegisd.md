@@ -204,10 +204,154 @@ SESSION_STATE when ERROR
   "message": "Session not found"
 }
 ```
+SESSION_DELETE when OK
+```json
+{
+  "request_id": "<uuid>",
+  "command": "SESSION_STATE",
+  "status": "ok",
+  "message": "Session deleted successfully",
+  "data": {
+    "session_id": "<id>",
+    "session_name": "<name>"
+  }
+}
+```
+SESSION_STATE when ERROR
+```json
+{
+  "request_id": "<uuid>",
+  "command": "SESSION_DELETE",
+  "status": "error",
+  "message": "Deletion failed: <reason>",
+  "data": {}
+}
+```
+
 ### Component inspection commands (TO-DO)
 COMPONENT_LIST when OK
 ```json
-
+{
+  "request_id": "<uuid>",
+  "command": "COMPONENT_LIST",
+  "status": "ok",
+  "data": {
+    "session_id": "<session_id>",
+    "components": [
+      {
+        "id": "<component_id>",
+        "name": "data_engine",
+        "state": "running",
+        "requires": {
+          "klines": true,
+          "book_depth": true
+        },
+        "supported_symbols": ["BTCUSDT"],
+        "supported_timeframes": ["1m", "15m"]
+      },
+      {
+        "id": "<component_id>",
+        "name": "strategy_engine",
+        "state": "pending",
+        "requires": {
+          "klines": true
+        },
+        "supported_symbols": ["BTCUSDT"],
+        "supported_timeframes": ["1m"]
+      }
+    ]
+  }
+}
+```
+COMPONENT_LIST when ERROR
+```json
+{
+  "request_id": "<uuid>",
+  "command": "COMPONENT_LIST",
+  "status": "error",
+  "message": "<message>",
+  "data": {}
+}
+```
+COMPONENT_GET when OK
+```json
+{
+  "request_id": "<uuid>",
+  "command": "COMPONENT_GET",
+  "status": "ok",
+  "data": {
+    "session_id": "<session_id>",
+    "component": {
+      "id": "<component_id>",
+      "name": "data_engine",
+      "state": "running",
+      "requires": {
+        "klines": true,
+        "book_depth": true,
+        "trades": false
+      },
+      "supported_symbols": ["BTCUSDT", "ETHUSDT"],
+      "supported_timeframes": ["1m", "5m", "15m"],
+      "started_at": "<timestamp>",
+      "uptime_seconds": 124
+    }
+  }
+}
+```
+COMPONENT_GET when ERROR
+```json
+{
+  "request_id": "<uuid>",
+  "command": "COMPONENT_GET",
+  "status": "error",
+  "message": "Component not found in session",
+  "data": {
+    "session_id": "<session_id>"
+  }
+}
+```
+COMPONENT_DESCRIBE when OK
+```json
+{
+  "request_id": "<uuid>",
+  "command": "COMPONENT_DESCRIBE",
+  "status": "ok",
+  "data": {
+    "session_id": "<session_id>",
+    "component": {
+      "id": "<component_id>",
+      "name": "data_engine",
+      "state": "running",
+      "topics_subscribed": [
+        "market.BTCUSDT.1m.klines",
+        "market.BTCUSDT.orderbook"
+      ],
+      "topics_published": [
+        "session.<session_id>.BTCUSDT.1m.klines"
+      ],
+      "socket": "/tmp/aegis-data-engine.sock",
+      "requires": {
+        "klines": true,
+        "book_depth": true
+      },
+      "metrics": {
+        "messages_in": 140234,
+        "messages_out": 140200,
+        "last_heartbeat": "<timestamp>"
+      }
+    }
+  }
+}
+```
+COMPONENT_DESCRIBE when ERROR
+```json
+{
+  "request_id": "<uuid>",
+  "command": "COMPONENT_DESCRIBE",
+  "status": "error",
+  "message": "<message>",
+  "data": {}
+}
 ```
 
 ## Workflow

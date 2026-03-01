@@ -6,26 +6,14 @@ import (
 	"github.com/eichiarakaki/aegis/internals/core"
 )
 
-// DeleteSession removes a session by its ID. It returns an error if the session does not exist.
-func DeleteSession(sessionID string, sessionStore *core.SessionStore) (string, error) {
-
-	session, found := GetSessionByHint(sessionID, sessionStore)
-	if !found {
-		return "", fmt.Errorf("there is no unique '%s' session", sessionID)
+// DeleteSession removes a session only is the session is stopped, finished or initialized.
+func DeleteSession(session *core.Session, sessionStore *core.SessionStore) error {
+	// Filtering everything else but these states
+	if session.GetState() != core.SessionStopped && session.GetState() != core.SessionFinished && session.GetState() != core.SessionInitialized {
+		return fmt.Errorf("can't delete session from the current state (%s). Session must be Stopped, Finished or Initialized")
 	}
-
-	id := session.ID
-
-	if session.GetStatus() == core.SessionFinished {
-		return id, fmt.Errorf("cannot delete session with ID %s because it is already finished", sessionID)
-	}
-	if session.GetStatus() == core.SessionRunning {
-		return id, fmt.Errorf("cannot delete session with ID %s because it is currently running", sessionID)
-	}
-
-	// A session can only be deleted if it is in the stopped state. If it's running, it must be stopped first.
 
 	sessionStore.DeleteSession(session.ID)
 
-	return id, nil
+	return nil
 }

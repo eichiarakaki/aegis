@@ -4,14 +4,28 @@ import (
 	"net"
 
 	"github.com/eichiarakaki/aegis/internals/core"
-	"github.com/eichiarakaki/aegis/internals/logger"
 	"github.com/eichiarakaki/aegis/internals/services/sessions"
 )
 
-// HandleSessionList returns all known sessions.
-func HandleSessionList(conn net.Conn, sessionStore *core.SessionStore) {
-	logger.Debug("Listing sessions")
+func HandleSessionList(cmd core.Command, conn net.Conn, sessionStore *core.SessionStore) {
+	if sessionStore.Count() == 0 {
+		core.WriteJSON(conn, core.Response{
+			RequestID: cmd.RequestID,
+			Command:   "SESSION_LIST",
+			Status:    "ok",
+			//ErrorCode: "",
+			Message: "There are 0 sessions at the moment",
+			Data:    nil,
+		})
+	}
+	data := sessions.ListSessions(sessionStore)
 
-	allSessions := sessions.ListSessions(sessionStore)
-	writeJSON(conn, allSessions)
+	core.WriteJSON(conn, core.Response{
+		RequestID: cmd.RequestID,
+		Command:   "COMPONENT_LIST",
+		Status:    "ok",
+		//ErrorCode: "",
+		//Message:   "",
+		Data: data,
+	})
 }

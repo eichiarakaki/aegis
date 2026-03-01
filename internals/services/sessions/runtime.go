@@ -24,14 +24,10 @@ func (m *SessionManager) StartSession(id string) error {
 */
 
 // StartSession starts a session only if the given session is 'SessionStarting' OR 'SessionStopped'
-func StartSession(sessionID string, sessionStore *core.SessionStore) error {
-	session, found := GetSessionByHint(sessionID, sessionStore)
-	if !found {
-		return errors.New("session not found")
-	}
+func StartSession(session *core.Session, sessionStore *core.SessionStore) error {
 
 	// If the session is starting, already running, or finished: 'start session' is meaningless.
-	currentStatus := session.GetStatus()
+	currentStatus := session.GetState()
 	// If the session is ALREADY starting, you don't need to start it again.
 	if currentStatus == core.SessionStarting {
 		return errors.New("session already starting")
@@ -65,5 +61,15 @@ func StartSession(sessionID string, sessionStore *core.SessionStore) error {
 		// TODO: Here you should call a function to actually start running the session.
 	}
 
+	return nil
+}
+
+func StopSession(session *core.Session, sessionStore *core.SessionStore) error {
+	err := session.SetToStop()
+	if err != nil {
+		return fmt.Errorf("failed to set session to stop: %w", err)
+	}
+
+	// TODO: Stop the session ONLY IF ALL THE COMPONENTS are stopped.
 	return nil
 }

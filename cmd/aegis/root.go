@@ -8,12 +8,14 @@ import (
 	"strings"
 
 	"github.com/eichiarakaki/aegis/internals/config"
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 )
 
 type Command struct {
-	Type    string `json:"type"`
-	Payload string `json:"payload"`
+	RequestID string `json:"request_id"`
+	Type      string `json:"type"`
+	Payload   string `json:"payload"`
 }
 
 var (
@@ -196,6 +198,31 @@ var healthCmd = &cobra.Command{
 	Short: "Health checks for Aegis subsystems",
 }
 
+var healthSessionCmd = &cobra.Command{
+	Use:   "session <id>",
+	Short: "Health check for a specific session",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		err := sendCommand("HEALTH_CHECK_SESSION", args[0])
+		if err != nil {
+			log.Fatal(err)
+		}
+	},
+}
+
+var healthComponentCmd = &cobra.Command{
+	Use:   "component <session_id> <component_id>",
+	Short: "Health check for a specific component",
+	Args:  cobra.ExactArgs(2),
+	Run: func(cmd *cobra.Command, args []string) {
+		payload := fmt.Sprintf("%s|%s", args[0], args[1])
+		err := sendCommand("HEALTH_CHECK_COMPONENT", payload)
+		if err != nil {
+			log.Fatal(err)
+		}
+	},
+}
+
 var healthCheckCmd = &cobra.Command{
 	Use:   "check <target>",
 	Short: "Run a health check (all|data|sessions)",
@@ -236,7 +263,15 @@ func sendCommand(cmdType, payload string) error {
 	}
 	defer conn.Close()
 
-	if err := json.NewEncoder(conn).Encode(Command{Type: cmdType, Payload: payload}); err != nil {
+	requestID := uuid.NewString()
+
+	cmd := Command{
+		RequestID: requestID,
+		Type:      cmdType,
+		Payload:   payload,
+	}
+
+	if err := json.NewEncoder(conn).Encode(cmd); err != nil {
 		return err
 	}
 
@@ -285,4 +320,6 @@ func init() {
 	componentCmd.AddCommand(componentDescribeCmd)
 
 	healthCmd.AddCommand(healthCheckCmd)
+	healthCmd.AddCommand(healthSessionCmd)
+	healthCmd.AddCommand(healthComponentCmd)
 }

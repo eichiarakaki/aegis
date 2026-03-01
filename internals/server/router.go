@@ -12,13 +12,9 @@ import (
 	"github.com/eichiarakaki/aegis/internals/core"
 	"github.com/eichiarakaki/aegis/internals/logger"
 	"github.com/eichiarakaki/aegis/internals/server/handlers"
+	"github.com/eichiarakaki/aegis/internals/server/handlers/component"
 	"github.com/eichiarakaki/aegis/internals/server/handlers/sessions"
 )
-
-type Command struct {
-	Type    string `json:"type"`
-	Payload string `json:"payload"`
-}
 
 func HandleAegis(conn net.Conn, sessionStore *core.SessionStore) {
 	defer func(conn net.Conn) {
@@ -28,58 +24,64 @@ func HandleAegis(conn net.Conn, sessionStore *core.SessionStore) {
 		}
 	}(conn)
 
-	var cmd Command
+	var cmd core.Command
 	err := json.NewDecoder(conn).Decode(&cmd)
 	if err != nil {
 		log.Println("Invalid command:", err)
 		return
 	}
 
-	logger.Infof("Received command: %s | Payload: %s", cmd.Type, cmd.Payload)
+	logger.WithRequestID(cmd.RequestID).Debugf("Received command: %s | Payload: %s", cmd.Type, cmd.Payload)
 
 	switch cmd.Type {
 
 	// -- Session lifecycle ------------------------------------------
 
 	case "SESSION_CREATE":
-		sessions.HandleSessionCreate(cmd.Payload, conn, sessionStore)
+		sessions.HandleSessionCreate(cmd, conn, sessionStore)
 
-	case "SESSION_CREATE_RUN":
-		sessions.HandleSessionCreateRun(cmd.Payload, conn, sessionStore)
+	// case "SESSION_CREATE_RUN":
+	// sessions.HandleSessionCreateRun(cmd, conn, sessionStore)
 
 	case "SESSION_ATTACH":
-		sessions.HandleSessionAttach(cmd.Payload, conn, sessionStore)
+		sessions.HandleSessionAttach(cmd, conn, sessionStore)
 
 	case "SESSION_START":
-		sessions.HandleSessionStart(cmd.Payload, conn, sessionStore)
+		sessions.HandleSessionStart(cmd, conn, sessionStore)
 
 	case "SESSION_STOP":
-		sessions.HandleSessionStop(cmd.Payload, conn, sessionStore)
+		sessions.HandleSessionStop(cmd, conn, sessionStore)
 
 	case "SESSION_LIST":
-		sessions.HandleSessionList(conn, sessionStore)
+		sessions.HandleSessionList(cmd, conn, sessionStore)
 
 	case "SESSION_STATE":
-		sessions.HandleSessionState(conn, cmd.Payload, sessionStore)
+		sessions.HandleSessionState(cmd, conn, sessionStore)
 
 	case "SESSION_DELETE":
-		sessions.HandleSessionDelete(cmd.Payload, conn, sessionStore)
+		sessions.HandleSessionDelete(cmd, conn, sessionStore)
 
 	// -- Component inspection --------------------------------------
 
 	case "COMPONENT_LIST":
-		logger.Info("Listing components for session:", cmd.Payload, sessionStore)
+		component.HandleComponentList(cmd, conn, sessionStore)
 
 	case "COMPONENT_GET":
-		logger.Info("Getting component:", cmd.Payload, sessionStore)
+		component.HandleComponentGet(cmd, conn, sessionStore)
 
 	case "COMPONENT_DESCRIBE":
-		logger.Info("Describing component:", cmd.Payload, sessionStore)
+		logger.Info("Describing component:", cmd, sessionStore)
 
 	// -- Health ----------------------------------------------------
 
 	case "HEALTH_CHECK":
-		handlers.HandleHealthCheck(cmd.Payload, conn, sessionStore)
+		handlers.HandleGlobalHealth(cmd.RequestID, conn, sessionStore)
+
+	case "HEALTH_CHECK_SESSION":
+		handlers.HandleHealthCheck(cmd.RequestID, conn, sessionStore)
+
+	case "HEALTH_CHECK_COMPONENT":
+		handlers.HandleHealthCheck(cmd.RequestID, conn, sessionStore)
 
 	default:
 		logger.Warn("Unknown command:", cmd.Type)
