@@ -24,7 +24,7 @@ Estructura para lograr eso:
 type StatusType int
 
 const (
-	SessionCreated StatusType = iota
+	SessionInitialized StatusType = iota
 	SessionStarting
 	SessionRunning
 	SessionStopping

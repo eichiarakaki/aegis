@@ -46,7 +46,7 @@ func StartSession(sessionID string, sessionStore *core.SessionStore) error {
 	}
 
 	// If the session was just created, you can start it.
-	if currentStatus == core.SessionCreated {
+	if currentStatus == core.SessionInitialized {
 		err := session.SetToStarting()
 		if err != nil {
 			return fmt.Errorf("failed to set session to starting: %w", err)

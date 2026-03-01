@@ -10,18 +10,19 @@ import (
 type StateType int
 
 const (
-	SessionCreated StateType = iota
+	SessionInitialized StateType = iota
 	SessionStarting
 	SessionRunning
 	SessionStopping
 	SessionStopped
 	SessionFinished
+	SessionError
 )
 
 func SessionStateToString(state StateType) string {
 	switch state {
-	case SessionCreated:
-		return "SessionCreated"
+	case SessionInitialized:
+		return "SessionInitialized"
 	case SessionStarting:
 		return "SessionStarting"
 	case SessionRunning:
@@ -32,6 +33,8 @@ func SessionStateToString(state StateType) string {
 		return "SessionStopped"
 	case SessionFinished:
 		return "SessionFinished"
+	case SessionError:
+		return "SessionError"
 	default: // Unreachable
 		return "Unknown"
 	}
@@ -59,7 +62,7 @@ func NewSession(id string, name string, mode string) *Session {
 		ID:         id,
 		Name:       name,
 		Mode:       mode,
-		State:      SessionCreated,
+		State:      SessionInitialized,
 		Components: make(map[string]*Component),
 		CreatedAt:  time.Now(),
 	}
@@ -85,7 +88,7 @@ func (s *Session) SetToStarting() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.State != SessionCreated {
+	if s.State != SessionInitialized {
 		return errors.New("session cannot be started from the current state")
 	}
 
