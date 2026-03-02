@@ -70,8 +70,7 @@ func HandleAegis(conn net.Conn, sessionStore *core.SessionStore) {
 		component.HandleComponentGet(cmd, conn, sessionStore)
 
 	case "COMPONENT_DESCRIBE":
-		logger.Info("Describing component:", cmd, sessionStore)
-
+		component.HandleComponentDescribe(cmd, conn, sessionStore)
 	// -- Health ----------------------------------------------------
 
 	case "HEALTH_CHECK":

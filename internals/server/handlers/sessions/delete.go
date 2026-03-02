@@ -1,56 +1,93 @@
 package sessions
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
-	"strings"
 
 	"github.com/eichiarakaki/aegis/internals/core"
-	"github.com/eichiarakaki/aegis/internals/services/sessions"
+	"github.com/eichiarakaki/aegis/internals/logger"
+	services_sessions "github.com/eichiarakaki/aegis/internals/services/sessions"
 	"github.com/eichiarakaki/aegis/internals/services/sessions/utils"
 )
 
 // HandleSessionDelete processes SESSION_DELETE commands.
-// Payload format: "<session_id>"
 func HandleSessionDelete(cmd core.Command, conn net.Conn, sessionStore *core.SessionStore) {
-	hint := strings.TrimSpace(cmd.Payload)
-	session, found := sessions.GetSessionByHint(hint, sessionStore)
-	if !found {
+	// Deserialize payload
+	var payload core.SessionActionPayload
+	payloadBytes, err := json.Marshal(cmd.Payload)
+	if err != nil {
+		logger.WithRequestID(cmd.RequestID).Errorf("Failed to marshal payload: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
 			Command:   "SESSION_DELETE",
 			Status:    "error",
-			//ErrorCode: "",
-			Message: fmt.Sprintf("Session not found."),
-			Data:    map[string]interface{}{},
+			Message:   "Invalid payload format",
 		})
 		return
 	}
 
-	// Getting a copy of session's data as it is going to be unavailable
+	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+		logger.WithRequestID(cmd.RequestID).Errorf("Failed to unmarshal payload: %s", err.Error())
+		core.WriteJSON(conn, core.Response{
+			RequestID: cmd.RequestID,
+			Command:   "SESSION_DELETE",
+			Status:    "error",
+			Message:   fmt.Sprintf("Payload parsing error: %s", err.Error()),
+		})
+		return
+	}
+
+	// Validate required field
+	if payload.SessionID == "" {
+		logger.WithRequestID(cmd.RequestID).Warnf("Session deletion failed: missing session_id")
+		core.WriteJSON(conn, core.Response{
+			RequestID: cmd.RequestID,
+			Command:   "SESSION_DELETE",
+			Status:    "error",
+			Message:   "Missing required field: session_id",
+		})
+		return
+	}
+
+	logger.WithRequestID(cmd.RequestID).Infof("Deleting session: %s", payload.SessionID)
+
+	// Get session
+	session, found := services_sessions.GetSessionByHint(payload.SessionID, sessionStore)
+	if !found {
+		logger.WithRequestID(cmd.RequestID).Warnf("Session not found: %s", payload.SessionID)
+		core.WriteJSON(conn, core.Response{
+			RequestID: cmd.RequestID,
+			Command:   "SESSION_DELETE",
+			Status:    "error",
+			Message:   "Session not found",
+		})
+		return
+	}
+
+	// Store session data before deletion
 	sessionID := session.ID
 	sessionName := session.Name
 
-	err := sessions.DeleteSession(session, sessionStore)
-
-	if err != nil {
+	// Delete session
+	if err := services_sessions.DeleteSession(session, sessionStore); err != nil {
+		logger.WithRequestID(cmd.RequestID).Errorf("Failed to delete session: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
 			Command:   "SESSION_DELETE",
 			Status:    "error",
-			//ErrorCode: "",
-			Message: fmt.Sprintf("Couldn't remove session: %s", err.Error()),
-			Data:    map[string]interface{}{},
+			Message:   fmt.Sprintf("Failed to delete session: %s", err.Error()),
 		})
 		return
 	}
+
+	logger.WithRequestID(cmd.RequestID).Infof("Session deleted successfully: %s (%s)", sessionName, utils.GetShortHash(sessionID))
 
 	core.WriteJSON(conn, core.Response{
 		RequestID: cmd.RequestID,
 		Command:   "SESSION_DELETE",
 		Status:    "ok",
-		//ErrorCode: "",
-		Message: fmt.Sprintf("%s (%s) was deleted successfully", sessionName, utils.GetShortHash(sessionID)),
+		Message:   fmt.Sprintf("Session deleted successfully: %s (%s)", sessionName, utils.GetShortHash(sessionID)),
 		Data: map[string]interface{}{
 			"session_id":   sessionID,
 			"session_name": sessionName,

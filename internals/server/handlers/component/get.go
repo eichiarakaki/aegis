@@ -1,40 +1,63 @@
 package component
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
-	"strings"
 
 	"github.com/eichiarakaki/aegis/internals/core"
+	"github.com/eichiarakaki/aegis/internals/logger"
 	components "github.com/eichiarakaki/aegis/internals/services/component"
 	"github.com/eichiarakaki/aegis/internals/services/sessions"
 )
 
-// HandleComponentGet returns all known components of a session.
+// HandleComponentGet returns component info for a session.
 func HandleComponentGet(cmd core.Command, conn net.Conn, sessionStore *core.SessionStore) {
-	sessionID := strings.TrimSpace(cmd.Payload)
-	session, found := sessions.GetSessionByHint(sessionID, sessionStore)
-	if !found {
-		core.WriteJSON(conn, core.Response{
-			RequestID: cmd.RequestID,
-			Command:   "COMPONENT_GET",
-			Status:    "error",
-			// ErrorCode: "",
-			Message: "Session not found.",
-			Data:    nil,
-		})
-		return
-	}
-
-	data, err := components.ComponentGet(session)
+	// Desalinizing payload
+	var payload core.ComponentGetPayload
+	payloadBytes, err := json.Marshal(cmd.Payload)
 	if err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
 			Command:   "COMPONENT_GET",
 			Status:    "error",
-			// ErrorCode: "",
-			Message: fmt.Sprintf("Couldn't get the component data: %s", err.Error()),
-			Data:    nil,
+			Message:   "Invalid payload format",
+		})
+		return
+	}
+
+	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+		core.WriteJSON(conn, core.Response{
+			RequestID: cmd.RequestID,
+			Command:   "COMPONENT_GET",
+			Status:    "error",
+			Message:   fmt.Sprintf("Payload parsing error: %s", err.Error()),
+		})
+		return
+	}
+
+	logger.WithRequestID(cmd.RequestID).Infof("Getting component %s from session %s", payload.ComponentID, payload.SessionID)
+
+	// Getting the session
+	session, found := sessions.GetSessionByHint(payload.SessionID, sessionStore)
+	if !found {
+		core.WriteJSON(conn, core.Response{
+			RequestID: cmd.RequestID,
+			Command:   "COMPONENT_GET",
+			Status:    "error",
+			Message:   "Session not found",
+		})
+		return
+	}
+
+	// Getting component
+	data, err := components.ComponentGet(session, payload.ComponentID)
+	if err != nil {
+		core.WriteJSON(conn, core.Response{
+			RequestID: cmd.RequestID,
+			Command:   "COMPONENT_GET",
+			Status:    "error",
+			Message:   fmt.Sprintf("Couldn't get component data: %s", err.Error()),
 		})
 		return
 	}
@@ -43,8 +66,6 @@ func HandleComponentGet(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 		RequestID: cmd.RequestID,
 		Command:   "COMPONENT_GET",
 		Status:    "ok",
-		//ErrorCode: "",
-		//Message:   "",
-		Data: data,
+		Data:      data,
 	})
 }

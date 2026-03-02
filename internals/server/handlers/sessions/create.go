@@ -1,123 +1,234 @@
 package sessions
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
-	"strings"
 
 	"github.com/eichiarakaki/aegis/internals/core"
 	"github.com/eichiarakaki/aegis/internals/logger"
-	services_sessions "github.com/eichiarakaki/aegis/internals/services/sessions"
+	servicessessions "github.com/eichiarakaki/aegis/internals/services/sessions"
 )
 
 // HandleSessionCreate processes SESSION_CREATE commands.
-// Payload format: "<name>|<mode>"
 func HandleSessionCreate(cmd core.Command, conn net.Conn, sessionStore *core.SessionStore) {
-	parts := strings.SplitN(cmd.Payload, "|", 2)
-	if len(parts) != 2 {
-		core.WriteJSON(conn, core.Response{
-			RequestID: cmd.RequestID,
-			Command:   "SESSION_CREATE",
-			Status:    "error",
-			Message:   fmt.Sprintf("invalid payload: %s", cmd.Payload),
-			Data:      map[string]string{}})
-		return
-	}
-
-	name, mode := parts[0], parts[1]
-
-	if strings.TrimSpace(name) == "" {
-		core.WriteJSON(conn, core.Response{
-			RequestID: cmd.RequestID,
-			Command:   "SESSION_CREATE",
-			Status:    "error",
-			Message:   fmt.Sprintf("Empty payload"),
-			Data:      map[string]string{}})
-		logger.WithRequestID(cmd.RequestID).Debugf("Empty payload: %s", cmd.Payload)
-		return
-	}
-
-	if mode != "realtime" && mode != "historical" {
-		core.WriteJSON(conn, core.Response{
-			RequestID: cmd.RequestID,
-			Command:   "SESSION_CREATE",
-			Status:    "error",
-			Message:   fmt.Sprintf("Unsupported Mode"),
-			Data:      map[string]string{}})
-		logger.WithRequestID(cmd.RequestID).Debugf("Unsupported Mode: %s", cmd.Payload)
-		return
-	}
-
-	// Creating the session
-	id, err := services_sessions.CreateSession(name, mode, sessionStore)
+	// Deserialize payload
+	var payload core.SessionCreatePayload
+	payloadBytes, err := json.Marshal(cmd.Payload)
 	if err != nil {
+		logger.WithRequestID(cmd.RequestID).Errorf("Failed to marshal payload: %s", err.Error())
+		core.WriteJSON(conn, core.Response{
+			RequestID: cmd.RequestID,
+			Command:   "SESSION_CREATE",
+			Status:    "error",
+			Message:   "Invalid payload format",
+		})
+		return
+	}
+
+	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+		logger.WithRequestID(cmd.RequestID).Errorf("Failed to unmarshal payload: %s", err.Error())
+		core.WriteJSON(conn, core.Response{
+			RequestID: cmd.RequestID,
+			Command:   "SESSION_CREATE",
+			Status:    "error",
+			Message:   fmt.Sprintf("Payload parsing error: %s", err.Error()),
+		})
+		return
+	}
+
+	// Validate required fields
+	if payload.Name == "" {
+		logger.WithRequestID(cmd.RequestID).Warnf("Session creation failed: empty name")
+		core.WriteJSON(conn, core.Response{
+			RequestID: cmd.RequestID,
+			Command:   "SESSION_CREATE",
+			Status:    "error",
+			Message:   "Missing required field: name",
+		})
+		return
+	}
+
+	// Validate mode
+	if payload.Mode != "realtime" && payload.Mode != "historical" {
+		logger.WithRequestID(cmd.RequestID).Warnf("Session creation failed: invalid mode %s", payload.Mode)
+		core.WriteJSON(conn, core.Response{
+			RequestID: cmd.RequestID,
+			Command:   "SESSION_CREATE",
+			Status:    "error",
+			Message:   "Invalid mode: must be 'realtime' or 'historical'",
+		})
+		return
+	}
+
+	logger.WithRequestID(cmd.RequestID).Infof("Creating session: name=%s, mode=%s", payload.Name, payload.Mode)
+
+	// Create the session
+	sessionID, err := servicessessions.CreateSession(payload.Name, payload.Mode, sessionStore)
+	if err != nil {
+		logger.WithRequestID(cmd.RequestID).Errorf("Failed to create session: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
 			Command:   "SESSION_CREATE",
 			Status:    "error",
 			Message:   fmt.Sprintf("Failed to create session: %s", err.Error()),
-			Data:      map[string]string{}})
-		logger.WithRequestID(cmd.RequestID).Errorf("Failed to create session: %s", err.Error())
+		})
 		return
 	}
 
-	// Getting the created session
-	session, found := sessionStore.GetSessionByID(id)
+	// Retrieve the created session
+	session, found := sessionStore.GetSessionByID(sessionID)
 	if !found {
+		logger.WithRequestID(cmd.RequestID).Errorf("Session created but not found: %s", sessionID)
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
 			Command:   "SESSION_CREATE",
 			Status:    "error",
-			Message:   fmt.Sprintf("Failed to get the created session: Session not found"),
-			Data:      map[string]string{}})
-		logger.WithRequestID(cmd.RequestID).Error("Failed to get the created session: Session not found")
+			Message:   "Session created but could not be retrieved",
+		})
 		return
 	}
+
+	logger.WithRequestID(cmd.RequestID).Infof("Session created successfully: %s (%s)", session.Name, session.ID)
 
 	core.WriteJSON(conn, core.Response{
 		RequestID: cmd.RequestID,
 		Command:   "SESSION_CREATE",
 		Status:    "ok",
-		Message:   fmt.Sprintf("Session was created successfully: %s", session.ID),
-		Data: map[string]map[string]string{
-			"session": {
+		Message:   fmt.Sprintf("Session created successfully: %s", session.Name),
+		Data: map[string]interface{}{
+			"session": map[string]interface{}{
 				"id":         session.ID,
 				"name":       session.Name,
 				"mode":       session.Mode,
 				"state":      core.SessionStateToString(session.State),
 				"created_at": session.CreatedAt.String(),
 			},
-		}})
+		},
+	})
 }
 
-// HandleSessionCreateRun creates a new session and immediately spawns
-// the provided components under a fresh SessionToken.
-//
-// Payload: <n>|<mode>|<path1>,<path2>,...
-//func HandleSessionCreateRun(payload string, conn net.Conn, sessionStore *core.SessionStore) {
-//	name, mode, paths, err := parseRunPayload(payload)
-//	if err != nil {
-//		writeError(conn, err.Error())
-//		return
-//	}
-//
-//	if mode != "realtime" && mode != "historical" {
-//		writeError(conn, "invalid mode: must be 'realtime' or 'historical'")
-//		return
-//	}
-//
-//	logger.Infof("Creating session and running components: name=%s mode=%s paths=%v", name, mode, paths)
-//
-//	// TODO:
-//	//   1. Persist the new session record and generate a SessionToken.
-//	//   2. For each path, exec the binary with AEGIS_SESSION_TOKEN=<token>.
-//	//   3. Components connect to /tmp/aegis-data-stream-<session_id>.sock
-//	//      once the token is verified.
-//
-//	writeJSON(conn, map[string]interface{}{
-//		"status":     "ok",
-//		"session":    name,
-//		"mode":       mode,
-//		"components": paths,
-//	})
-//}
+// HandleSessionCreateRun creates a new session and immediately spawns the provided components.
+func HandleSessionCreateRun(cmd core.Command, conn net.Conn, sessionStore *core.SessionStore) {
+	// Deserialize payload
+	var payload core.SessionCreateRunPayload
+	payloadBytes, err := json.Marshal(cmd.Payload)
+	if err != nil {
+		logger.WithRequestID(cmd.RequestID).Errorf("Failed to marshal payload: %s", err.Error())
+		core.WriteJSON(conn, core.Response{
+			RequestID: cmd.RequestID,
+			Command:   "SESSION_CREATE_RUN",
+			Status:    "error",
+			Message:   "Invalid payload format",
+		})
+		return
+	}
+
+	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+		logger.WithRequestID(cmd.RequestID).Errorf("Failed to unmarshal payload: %s", err.Error())
+		core.WriteJSON(conn, core.Response{
+			RequestID: cmd.RequestID,
+			Command:   "SESSION_CREATE_RUN",
+			Status:    "error",
+			Message:   fmt.Sprintf("Payload parsing error: %s", err.Error()),
+		})
+		return
+	}
+
+	// Validate required fields
+	if payload.Name == "" {
+		logger.WithRequestID(cmd.RequestID).Warnf("Session creation failed: empty name")
+		core.WriteJSON(conn, core.Response{
+			RequestID: cmd.RequestID,
+			Command:   "SESSION_CREATE_RUN",
+			Status:    "error",
+			Message:   "Missing required field: name",
+		})
+		return
+	}
+
+	if payload.Mode != "realtime" && payload.Mode != "historical" {
+		logger.WithRequestID(cmd.RequestID).Warnf("Session creation failed: invalid mode %s", payload.Mode)
+		core.WriteJSON(conn, core.Response{
+			RequestID: cmd.RequestID,
+			Command:   "SESSION_CREATE_RUN",
+			Status:    "error",
+			Message:   "Invalid mode: must be 'realtime' or 'historical'",
+		})
+		return
+	}
+
+	if len(payload.Paths) == 0 {
+		logger.WithRequestID(cmd.RequestID).Warnf("Session creation failed: no component paths provided")
+		core.WriteJSON(conn, core.Response{
+			RequestID: cmd.RequestID,
+			Command:   "SESSION_CREATE_RUN",
+			Status:    "error",
+			Message:   "At least one component path is required",
+		})
+		return
+	}
+
+	logger.WithRequestID(cmd.RequestID).Infof("Creating session and spawning components: name=%s, mode=%s, paths=%d", payload.Name, payload.Mode, len(payload.Paths))
+
+	// Create the session
+	sessionID, err := servicessessions.CreateSession(payload.Name, payload.Mode, sessionStore)
+	if err != nil {
+		logger.WithRequestID(cmd.RequestID).Errorf("Failed to create session: %s", err.Error())
+		core.WriteJSON(conn, core.Response{
+			RequestID: cmd.RequestID,
+			Command:   "SESSION_CREATE_RUN",
+			Status:    "error",
+			Message:   fmt.Sprintf("Failed to create session: %s", err.Error()),
+		})
+		return
+	}
+
+	// Retrieve the created session
+	session, found := sessionStore.GetSessionByID(sessionID)
+	if !found {
+		logger.WithRequestID(cmd.RequestID).Errorf("Session created but not found: %s", sessionID)
+		core.WriteJSON(conn, core.Response{
+			RequestID: cmd.RequestID,
+			Command:   "SESSION_CREATE_RUN",
+			Status:    "error",
+			Message:   "Session created but could not be retrieved",
+		})
+		return
+	}
+
+	// Attach components
+	components, err := servicessessions.AttachComponents(session, payload.Paths)
+	if err != nil {
+		logger.WithRequestID(cmd.RequestID).Errorf("Failed to attach components: %s", err.Error())
+		core.WriteJSON(conn, core.Response{
+			RequestID: cmd.RequestID,
+			Command:   "SESSION_CREATE_RUN",
+			Status:    "error",
+			Message:   fmt.Sprintf("Failed to attach components: %s", err.Error()),
+			Data: map[string]interface{}{
+				"session_id": session.ID,
+			},
+		})
+		return
+	}
+
+	logger.WithRequestID(cmd.RequestID).Infof("Session created and %d components spawned: %s (%s)", len(components), session.Name, session.ID)
+
+	core.WriteJSON(conn, core.Response{
+		RequestID: cmd.RequestID,
+		Command:   "SESSION_CREATE_RUN",
+		Status:    "ok",
+		Message:   fmt.Sprintf("Session created and %d components spawned", len(components)),
+		Data: map[string]interface{}{
+			"session": map[string]interface{}{
+				"id":         session.ID,
+				"name":       session.Name,
+				"mode":       session.Mode,
+				"state":      core.SessionStateToString(session.State),
+				"created_at": session.CreatedAt.String(),
+			},
+			"attached_components": components,
+		},
+	})
+}
