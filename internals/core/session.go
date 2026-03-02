@@ -241,30 +241,65 @@ func (store *SessionStore) GetSessionsByStatus(state SessionStateType) []*Sessio
 	return sessions
 }
 
-// GetSessionByIDApproximation retrieves a session by its full ID or by an approximation.
+// GetSessionByIDApproximation retrieves a session by its full ID or by a dynamic approximation.
+// The approximation uses progressively longer prefixes of the session ID.
+// Examples:
+//   - "abc" matches "abcdef123..." if it's unique
+//   - If multiple sessions start with "abc", it returns nil (ambiguous)
+//   - Full ID always takes priority
+//
+// Returns the session and a boolean indicating if it was found.
 func (store *SessionStore) GetSessionByIDApproximation(approximation string) (*Session, bool) {
 	if approximation == "" {
 		return nil, false
 	}
 
-	const minApproximationLength = 4
-
 	store.mu.RLock()
 	defer store.mu.RUnlock()
 
-	// First, try exact match
+	// First, try exact match (full ID)
 	for _, session := range store.sessions {
 		if session.ID == approximation {
 			return session, true
 		}
 	}
 
-	// Then, try approximation if length is sufficient
-	if len(approximation) >= minApproximationLength {
+	// Then, try dynamic prefix matching
+	// Start from approximation length and go up to the max ID length
+	maxIDLength := 0
+	for _, session := range store.sessions {
+		if len(session.ID) > maxIDLength {
+			maxIDLength = len(session.ID)
+		}
+	}
+
+	// Try progressively longer prefixes
+	for prefixLen := len(approximation); prefixLen <= maxIDLength; prefixLen++ {
+		if prefixLen > len(approximation) {
+			break // Don't search beyond the approximation length on first pass
+		}
+
+		matches := 0
+		var matchedSession *Session
+
 		for _, session := range store.sessions {
-			if len(session.ID) >= minApproximationLength && session.ID[:minApproximationLength] == approximation[:minApproximationLength] {
-				return session, true
+			if len(session.ID) >= prefixLen && session.ID[:prefixLen] == approximation[:prefixLen] {
+				matches++
+				matchedSession = session
+				if matches > 1 {
+					break // Ambiguous: multiple matches
+				}
 			}
+		}
+
+		// If exactly one match at this prefix length, return it
+		if matches == 1 {
+			return matchedSession, true
+		}
+
+		// If multiple matches, stop searching (ambiguous)
+		if matches > 1 {
+			return nil, false
 		}
 	}
 
