@@ -60,13 +60,13 @@ func HandleSessionAttach(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 	logger.WithRequestID(cmd.RequestID).Infof("Attaching %d components to session %s", len(payload.Paths), payload.SessionID)
 
 	// Get session
-	session, found := sessionsvc.GetSessionByHint(payload.SessionID, sessionStore)
-	if !found {
+	session, err := sessionsvc.GetSessionByHint(payload.SessionID, sessionStore)
+	if err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
 			Command:   "SESSION_ATTACH",
 			Status:    "error",
-			Message:   "Session not found",
+			Message:   err.Error(),
 			Data: map[string]string{
 				"session_id": payload.SessionID,
 			},

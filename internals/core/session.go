@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/eichiarakaki/aegis/internals/core/component"
 )
 
 type SessionStateType int
@@ -45,7 +47,7 @@ type Session struct {
 	Name       string
 	Mode       string // realtime | historical
 	State      SessionStateType
-	Components map[string]*Component
+	Components map[string]*component.Component
 
 	CreatedAt time.Time
 	StartedAt *time.Time
@@ -61,7 +63,7 @@ func NewSession(id string, name string, mode string) *Session {
 		Name:       name,
 		Mode:       mode,
 		State:      SessionInitialized,
-		Components: make(map[string]*Component),
+		Components: make(map[string]*component.Component),
 		CreatedAt:  time.Now(),
 	}
 }
@@ -135,7 +137,7 @@ func (s *Session) SetToStop() error {
 
 // AddComponent adds a component to the session.
 // Returns an error if the session is finished or if the component already exists.
-func (s *Session) AddComponent(c *Component) error {
+func (s *Session) AddComponent(c *component.Component) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -143,11 +145,11 @@ func (s *Session) AddComponent(c *Component) error {
 		return errors.New("cannot add component to finished session")
 	}
 
-	if _, exists := s.Components[*c.ID]; exists {
+	if _, exists := s.Components[c.ID]; exists {
 		return errors.New("component already registered")
 	}
 
-	s.Components[*c.ID] = c
+	s.Components[c.ID] = c
 	return nil
 }
 
@@ -353,14 +355,14 @@ func (store *SessionStore) TotalComponents() int {
 	return count
 }
 
-func (store *SessionStore) TotalComponentsByStateFromAllSessions(state ComponentStateType) int {
+func (store *SessionStore) TotalComponentsByStateFromAllSessions(state component.ComponentState) int {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
 	count := 0
 
 	for _, session := range store.sessions {
-		for _, component := range session.Components {
-			if component.State == state {
+		for _, comp := range session.Components {
+			if comp.State == state {
 				count++
 			}
 		}

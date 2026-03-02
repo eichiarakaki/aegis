@@ -21,7 +21,7 @@ func HandleSessionCreate(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 			RequestID: cmd.RequestID,
 			Command:   "SESSION_CREATE",
 			Status:    "error",
-			Message:   "Invalid payload format",
+			Message:   err.Error(),
 		})
 		return
 	}

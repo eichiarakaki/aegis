@@ -39,13 +39,13 @@ func HandleComponentGet(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 	logger.WithRequestID(cmd.RequestID).Infof("Getting component %s from session %s", payload.ComponentID, payload.SessionID)
 
 	// Getting the session
-	session, found := sessions.GetSessionByHint(payload.SessionID, sessionStore)
-	if !found {
+	session, err := sessions.GetSessionByHint(payload.SessionID, sessionStore)
+	if err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
 			Command:   "COMPONENT_GET",
 			Status:    "error",
-			Message:   "Session not found",
+			Message:   err.Error(),
 		})
 		return
 	}

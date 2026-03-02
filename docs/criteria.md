@@ -11,4 +11,4 @@ Aqui escribo las tecnologias que se usará para este microservicio y la razón.
 ---
 
 Main programming language: **Go**
-Tech Stack: **Docker, GraphQL, NATS**
+Tech Stack: **Docker, NATS**

@@ -53,14 +53,14 @@ func HandleSessionStart(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 	logger.WithRequestID(cmd.RequestID).Infof("Starting session: %s", payload.SessionID)
 
 	// Get session
-	session, found := servicessessions.GetSessionByHint(payload.SessionID, sessionStore)
-	if !found {
+	session, err := servicessessions.GetSessionByHint(payload.SessionID, sessionStore)
+	if err != nil {
 		logger.WithRequestID(cmd.RequestID).Warnf("Session not found: %s", payload.SessionID)
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
 			Command:   "SESSION_START",
 			Status:    "error",
-			Message:   "Session not found",
+			Message:   err.Error(),
 		})
 		return
 	}
@@ -143,14 +143,14 @@ func HandleSessionStop(cmd core.Command, conn net.Conn, sessionStore *core.Sessi
 	logger.WithRequestID(cmd.RequestID).Infof("Stopping session: %s", payload.SessionID)
 
 	// Get session
-	session, found := servicessessions.GetSessionByHint(payload.SessionID, sessionStore)
-	if !found {
+	session, err := servicessessions.GetSessionByHint(payload.SessionID, sessionStore)
+	if err != nil {
 		logger.WithRequestID(cmd.RequestID).Warnf("Session not found: %s", payload.SessionID)
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
 			Command:   "SESSION_STOP",
 			Status:    "error",
-			Message:   "Session not found",
+			Message:   err.Error(),
 		})
 		return
 	}
@@ -231,14 +231,14 @@ func HandleSessionState(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 	logger.WithRequestID(cmd.RequestID).Debugf("Querying session state: %s", payload.SessionID)
 
 	// Get session
-	session, found := servicessessions.GetSessionByHint(payload.SessionID, sessionStore)
-	if !found {
+	session, err := servicessessions.GetSessionByHint(payload.SessionID, sessionStore)
+	if err != nil {
 		logger.WithRequestID(cmd.RequestID).Warnf("Session not found: %s", payload.SessionID)
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
 			Command:   "SESSION_STATE",
 			Status:    "error",
-			Message:   "Session not found",
+			Message:   err.Error(),
 		})
 		return
 	}
