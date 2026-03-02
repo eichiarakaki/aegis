@@ -96,7 +96,7 @@ func HandleSessionStart(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 			"previous_state": core.SessionStateToString(previousState),
 			"current_state":  core.SessionStateToString(session.State),
 			"started_at":     session.StartedAt,
-			"components":     session.Components,
+			"components":     session.Registry.List(),
 		},
 	})
 }
@@ -184,7 +184,7 @@ func HandleSessionStop(cmd core.Command, conn net.Conn, sessionStore *core.Sessi
 			"previous_state": core.SessionStateToString(previousState),
 			"current_state":  core.SessionStateToString(session.State),
 			"stopped_at":     session.StoppedAt,
-			"components":     session.Components,
+			"components":     session.Registry.List(),
 		},
 	})
 }

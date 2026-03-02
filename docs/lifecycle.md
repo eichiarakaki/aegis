@@ -6,7 +6,7 @@ aegis session create <session_name> --mode <mode>
 aegis session attach <session_name|session_id> --path <comp1> -- <comp2>
 ```
 
-> Then the Aegis Daemon generates a SessionToken and runs the components with an Env variable with the same SessionToken.
+> Then the Aegis Daemon runs the components with the session ID as Env variable.
 
 > When the component is run, it connects to the /tmp/aegis-components.sock and sends a JSON:
 ```json

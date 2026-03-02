@@ -43,11 +43,11 @@ func SessionStateToString(state SessionStateType) string {
 }
 
 type Session struct {
-	ID         string
-	Name       string
-	Mode       string // realtime | historical
-	State      SessionStateType
-	Components map[string]*component.Component
+	ID       string
+	Name     string
+	Mode     string // realtime | historical
+	State    SessionStateType
+	Registry *component.ComponentRegistry
 
 	CreatedAt time.Time
 	StartedAt *time.Time
@@ -59,12 +59,12 @@ type Session struct {
 // NewSession creates a new session with the given name and mode.
 func NewSession(id string, name string, mode string) *Session {
 	return &Session{
-		ID:         id,
-		Name:       name,
-		Mode:       mode,
-		State:      SessionInitialized,
-		Components: make(map[string]*component.Component),
-		CreatedAt:  time.Now(),
+		ID:        id,
+		Name:      name,
+		Mode:      mode,
+		State:     SessionInitialized,
+		Registry:  nil,
+		CreatedAt: time.Now(),
 	}
 }
 
@@ -145,12 +145,11 @@ func (s *Session) AddComponent(c *component.Component) error {
 		return errors.New("cannot add component to finished session")
 	}
 
-	if _, exists := s.Components[c.ID]; exists {
-		return errors.New("component already registered")
+	if s.Registry == nil {
+		return errors.New("session registry is not initialized")
 	}
 
-	s.Components[c.ID] = c
-	return nil
+	return s.Registry.Register(c)
 }
 
 // GetState returns the current state of the session.
@@ -241,6 +240,17 @@ func (store *SessionStore) GetSessionsByStatus(state SessionStateType) []*Sessio
 		}
 	}
 	return sessions
+}
+
+func (store *SessionStore) IsTokenInSessionStore(token string) bool {
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	for _, session := range store.sessions {
+		if session.ID == token {
+			return true
+		}
+	}
+	return false
 }
 
 // GetSessionByIDApproximation retrieves a session by its full ID or by a dynamic approximation.
@@ -349,7 +359,10 @@ func (store *SessionStore) TotalComponents() int {
 
 	count := 0
 	for _, session := range store.sessions {
-		count += len(session.Components)
+		if session.Registry == nil {
+			continue
+		}
+		count += len(session.Registry.List())
 	}
 
 	return count
@@ -358,14 +371,13 @@ func (store *SessionStore) TotalComponents() int {
 func (store *SessionStore) TotalComponentsByStateFromAllSessions(state component.ComponentState) int {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
-	count := 0
 
+	count := 0
 	for _, session := range store.sessions {
-		for _, comp := range session.Components {
-			if comp.State == state {
-				count++
-			}
+		if session.Registry == nil {
+			continue
 		}
+		count += len(session.Registry.GetByState(state))
 	}
 
 	return count

@@ -8,7 +8,7 @@ func ComponentDescribe(session *core.Session) (map[string]interface{}, error) {
 
 	data := map[string]interface{}{
 		"session_id": session.ID,
-		"components": session.Components,
+		"components": session.Registry.List(),
 	}
 
 	return data, nil

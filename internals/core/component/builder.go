@@ -48,9 +48,9 @@ func RegisterRequest(sessionToken, componentName, version string, caps Component
 		Build()
 }
 
-// RegisteredResponse construye un REGISTERED
+// RegisteredResponse constructs a REGISTERED
 func RegisteredResponse(correlationID, componentID, sessionID string) (*Envelope, error) {
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"component_id": componentID,
 		"session_id":   sessionID,
 		"state":        ComponentStateRegistered,
@@ -64,7 +64,7 @@ func RegisteredResponse(correlationID, componentID, sessionID string) (*Envelope
 
 // StateUpdateRequest construye un STATE_UPDATE
 func StateUpdateRequest(state ComponentState) (*Envelope, error) {
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"state": state,
 	}
 
