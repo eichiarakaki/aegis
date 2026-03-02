@@ -1,4 +1,5 @@
 
 ### Responses to the Aegis CLI
-- [] Normalize the responses
-- 
+- [x] Normalize the responses
+- [] Make the orchestrator
+- [] Make the health checks funtionalities

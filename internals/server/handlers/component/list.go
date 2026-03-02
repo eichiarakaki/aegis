@@ -53,14 +53,14 @@ func HandleComponentList(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 	logger.WithRequestID(cmd.RequestID).Debugf("Listing components for session: %s", payload.SessionID)
 
 	// Get session
-	session, found := servicessessions.GetSessionByHint(payload.SessionID, sessionStore)
-	if !found {
+	session, err := servicessessions.GetSessionByHint(payload.SessionID, sessionStore)
+	if err != nil {
 		logger.WithRequestID(cmd.RequestID).Warnf("Session not found: %s", payload.SessionID)
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
 			Command:   "COMPONENT_LIST",
 			Status:    "error",
-			Message:   "Session not found",
+			Message:   err.Error(),
 		})
 		return
 	}

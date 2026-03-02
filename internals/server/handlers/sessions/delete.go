@@ -53,14 +53,14 @@ func HandleSessionDelete(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 	logger.WithRequestID(cmd.RequestID).Infof("Deleting session: %s", payload.SessionID)
 
 	// Get session
-	session, found := services_sessions.GetSessionByHint(payload.SessionID, sessionStore)
-	if !found {
+	session, err := services_sessions.GetSessionByHint(payload.SessionID, sessionStore)
+	if err != nil {
 		logger.WithRequestID(cmd.RequestID).Warnf("Session not found: %s", payload.SessionID)
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
 			Command:   "SESSION_DELETE",
 			Status:    "error",
-			Message:   "Session not found",
+			Message:   err.Error(),
 		})
 		return
 	}

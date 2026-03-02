@@ -2,13 +2,14 @@ package sessions
 
 import (
 	"github.com/eichiarakaki/aegis/internals/core"
+	"github.com/eichiarakaki/aegis/internals/core/component"
 )
 
 func GetSessionState(cmd core.Command, session *core.Session) (core.Response, error) {
 
-	var components []*core.Component
+	var components []*component.Component
 
-	for _, component := range session.Components {
+	for _, component := range session.Registry.List() {
 		components = append(components, component)
 	}
 

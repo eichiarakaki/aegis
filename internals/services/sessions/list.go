@@ -12,7 +12,7 @@ func ListSessions(sessionStore *core.SessionStore) map[string]any {
 			"name":       session.Name,
 			"mode":       session.Mode,
 			"state":      core.SessionStateToString(session.GetState()),
-			"components": session.Components,
+			"components": session.Registry.List(),
 			"created_at": session.CreatedAt,
 			"started_at": session.StartedAt,
 			"stopped_at": session.StoppedAt,

@@ -4,6 +4,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/eichiarakaki/aegis/internals/core/component"
 	"github.com/google/uuid"
 
 	"github.com/eichiarakaki/aegis/internals/core"
@@ -16,7 +17,7 @@ func HandleGlobalHealth(requestID string, conn net.Conn, store *core.SessionStor
 	runningSessions := store.CountByState(core.SessionRunning)
 
 	totalComponents := store.TotalComponents()
-	runningComponents := store.TotalComponentsByStateFromAllSessions(core.ComponentRunning)
+	runningComponents := store.TotalComponentsByStateFromAllSessions(component.ComponentStateRunning)
 
 	data := map[string]interface{}{
 		"daemon": map[string]interface{}{

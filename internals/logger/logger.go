@@ -37,6 +37,14 @@ func WithRequestID(id string) *Logger {
 	return New().WithRequestID(id)
 }
 
+func WithSessionID(id string) *Logger {
+	return New().WithSessionID(id)
+}
+
+func WithComponent(name string) *Logger {
+	return New().WithComponent(name)
+}
+
 func (l *Logger) WithRequestID(id string) *Logger {
 	l.requestID = id
 	return l

@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/eichiarakaki/aegis/internals/core"
+	"github.com/eichiarakaki/aegis/internals/core/component"
 	"github.com/eichiarakaki/aegis/internals/services/sessions/utils"
 )
 
@@ -29,16 +30,13 @@ func verifyComponent(path string) error {
 	return nil
 }
 
-// AttachComponents attaches components to a STOPPED/INITIALIZED session.
-func AttachComponents(session *core.Session, paths []string) ([]core.Component, error) {
+func AttachComponents(session *core.Session, paths []string) ([]component.Component, error) {
 
-	// We first check the current state of the session the user tryna inject components.
 	currentState := session.GetState()
 	if currentState != core.SessionInitialized && currentState != core.SessionStopped {
 		return nil, fmt.Errorf("session is not initialized or stopped: %s", core.SessionStateToString(session.GetState()))
 	}
 
-	// Verifies component's path and type (it must be an executable)
 	var validComponents []string
 	var invalidComponents []string
 	for _, path := range paths {
@@ -50,19 +48,16 @@ func AttachComponents(session *core.Session, paths []string) ([]core.Component, 
 		validComponents = append(validComponents, path)
 	}
 
-	// Building components
-	var components []core.Component
-	for _, component := range validComponents {
+	var components []component.Component
+	for range validComponents {
 		newID, err := utils.GenerateUUID()
 		if err != nil {
 			return nil, err
 		}
 
-		// The other areas will be filled when the component opens a connection with Aegis
-		components = append(components, core.Component{
-			ID:    &newID,
-			State: core.ComponentPending,
-			Path:  component,
+		components = append(components, component.Component{
+			ID:    newID,
+			State: component.ComponentStateInit,
 		})
 	}
 
