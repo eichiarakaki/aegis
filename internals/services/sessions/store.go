@@ -13,7 +13,7 @@ func GetSessionByHint(hint string, sessionStore *core.SessionStore) (*core.Sessi
 
 	_, count := sessionStore.GetSessionsByName(hint)
 	if count >= 2 {
-		logger.Errorf("Attempted to delete %d sessions with the same name!", count)
+		logger.Errorf("There are %d sessions with the same name; try using the session ID.", count)
 		return nil, false
 	}
 	nameSession, nameFound := sessionStore.GetSessionByName(hint)

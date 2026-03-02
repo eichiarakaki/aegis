@@ -28,6 +28,6 @@ func HandleComponentConnections(conn net.Conn) {
 		logger.Debugf("Component %s requires: klines=%t, liquidation_snapshots=%t, metrics=%t, agg_trades=%t, book_depth=%t, trades=%t",
 			component.Name, req.Klines, req.LiquidationSnapshots, req.Metrics, req.AggTrades, req.BookDepth, req.Trades)
 	}
-	logger.Debugf("Component %s supports symbols: %v", component.Name, component.Supported_symbols)
-	logger.Debugf("Component %s supports timeframes: %v", component.Name, component.Supported_timeframes)
+	logger.Debugf("Component %s supports symbols: %v", component.Name, component.SupportedSymbols)
+	logger.Debugf("Component %s supports timeframes: %v", component.Name, component.SupportedTimeframes)
 }

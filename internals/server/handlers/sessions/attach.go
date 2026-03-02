@@ -1,62 +1,105 @@
 package sessions
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
-	"strings"
 
 	"github.com/eichiarakaki/aegis/internals/core"
 	"github.com/eichiarakaki/aegis/internals/logger"
+	sessionsvc "github.com/eichiarakaki/aegis/internals/services/sessions"
+	"github.com/eichiarakaki/aegis/internals/services/sessions/utils"
 )
 
-// parseRunPayload splits the wire format produced by buildRunPayload:
-//
-//	<name_or_id>|<mode>|<path1>,<path2>,...
-func parseRunPayload(payload string) (nameOrID, mode string, paths []string, err error) {
-	parts := strings.SplitN(payload, "|", 3)
-	if len(parts) != 3 {
-		err = fmt.Errorf("invalid payload: expected <name_or_id>|<mode>|<paths>")
-		return
-	}
-
-	nameOrID = strings.TrimSpace(parts[0])
-	mode = strings.TrimSpace(parts[1])
-
-	for _, p := range strings.Split(parts[2], ",") {
-		if p = strings.TrimSpace(p); p != "" {
-			paths = append(paths, p)
-		}
-	}
-
-	if nameOrID == "" {
-		err = fmt.Errorf("session name or ID cannot be empty")
-	}
-	if len(paths) == 0 {
-		err = fmt.Errorf("at least one component path is required")
-	}
-	return
-}
-
-// HandleSessionAttach attaches new components to an already running session.
-//
-// Payload: <name_or_id>||<path1>,<path2>,...
-func HandleSessionAttach(payload string, conn net.Conn, sessionStore *core.SessionStore) {
-	nameOrID, _, paths, err := parseRunPayload(payload)
+// HandleSessionAttach attaches new components to an existing session.
+func HandleSessionAttach(cmd core.Command, conn net.Conn, sessionStore *core.SessionStore) {
+	// Deserialize payload
+	var payload core.SessionAttachPayload
+	payloadBytes, err := json.Marshal(cmd.Payload)
 	if err != nil {
-		writeError(conn, err.Error())
+		core.WriteJSON(conn, core.Response{
+			RequestID: cmd.RequestID,
+			Command:   "SESSION_ATTACH",
+			Status:    "error",
+			Message:   "Invalid payload format",
+		})
 		return
 	}
 
-	logger.Infof("Attaching components to session: session=%s paths=%v", nameOrID, paths)
+	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+		core.WriteJSON(conn, core.Response{
+			RequestID: cmd.RequestID,
+			Command:   "SESSION_ATTACH",
+			Status:    "error",
+			Message:   fmt.Sprintf("Payload parsing error: %s", err.Error()),
+		})
+		return
+	}
 
-	// TODO:
-	//   1. Look up the session by name or ID and retrieve its SessionToken.
-	//   2. Verify the session is in a running state.
-	//   3. Exec each component binary with AEGIS_SESSION_TOKEN=<token>.
+	// Validate required fields
+	if payload.SessionID == "" {
+		core.WriteJSON(conn, core.Response{
+			RequestID: cmd.RequestID,
+			Command:   "SESSION_ATTACH",
+			Status:    "error",
+			Message:   "Missing required field: session_id",
+		})
+		return
+	}
 
-	writeJSON(conn, map[string]interface{}{
-		"status":     "ok",
-		"session":    nameOrID,
-		"components": paths,
+	if len(payload.Paths) == 0 {
+		core.WriteJSON(conn, core.Response{
+			RequestID: cmd.RequestID,
+			Command:   "SESSION_ATTACH",
+			Status:    "error",
+			Message:   "At least one component path is required",
+		})
+		return
+	}
+
+	logger.WithRequestID(cmd.RequestID).Infof("Attaching %d components to session %s", len(payload.Paths), payload.SessionID)
+
+	// Get session
+	session, found := sessionsvc.GetSessionByHint(payload.SessionID, sessionStore)
+	if !found {
+		core.WriteJSON(conn, core.Response{
+			RequestID: cmd.RequestID,
+			Command:   "SESSION_ATTACH",
+			Status:    "error",
+			Message:   "Session not found",
+			Data: map[string]string{
+				"session_id": payload.SessionID,
+			},
+		})
+		return
+	}
+
+	// Attach components
+	components, err := sessionsvc.AttachComponents(session, payload.Paths)
+	if err != nil {
+		logger.WithRequestID(cmd.RequestID).Errorf("Failed to attach components: %s", err.Error())
+		core.WriteJSON(conn, core.Response{
+			RequestID: cmd.RequestID,
+			Command:   "SESSION_ATTACH",
+			Status:    "error",
+			Message:   fmt.Sprintf("Failed to attach components: %s", err.Error()),
+			Data: map[string]string{
+				"session_id": session.ID,
+			},
+		})
+		return
+	}
+
+	logger.WithRequestID(cmd.RequestID).Infof("Successfully attached %d components to session %s", len(components), session.Name)
+
+	core.WriteJSON(conn, core.Response{
+		RequestID: cmd.RequestID,
+		Command:   "SESSION_ATTACH",
+		Status:    "ok",
+		Message:   fmt.Sprintf("Attached %d components to %s (%s)", len(components), session.Name, utils.GetShortHash(session.ID)),
+		Data: map[string]interface{}{
+			"session_id":          session.ID,
+			"attached_components": components,
+		},
 	})
 }

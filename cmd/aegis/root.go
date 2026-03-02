@@ -5,22 +5,16 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"strings"
 
 	"github.com/eichiarakaki/aegis/internals/config"
+	"github.com/eichiarakaki/aegis/internals/core"
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 )
-
-type Command struct {
-	Type    string `json:"type"`
-	Payload string `json:"payload"`
-}
 
 var (
 	mode  string
 	paths []string
-
-	session string
 )
 
 var rootCmd = &cobra.Command{
@@ -37,47 +31,47 @@ var sessionCmd = &cobra.Command{
 	Short: "Manage sessions",
 }
 
-// aegis session create <name> --mode <mode> [--path <p>...]
-//
-// Without --path: creates the session and returns.
-// With    --path: creates the session and immediately spawns the components.
 var sessionCreateCmd = &cobra.Command{
 	Use:   "create <name>",
 	Short: "Create a session, optionally launching components right away",
-	Example: `  aegis session create my-session --mode live
-  aegis session create my-session --mode backtest --path ./comp1 --path ./comp2`,
-	Args: cobra.ExactArgs(1),
+	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		name := args[0]
 
 		if len(paths) == 0 {
-			// Plain create — no components to run yet.
-			err := sendCommand("SESSION_CREATE", fmt.Sprintf("%s|%s", name, mode))
+			payload := core.SessionCreatePayload{
+				Name: name,
+				Mode: mode,
+			}
+			err := sendCommand("SESSION_CREATE", payload)
 			if err != nil {
 				log.Fatal(err)
 			}
 			return
 		}
 
-		// Create + launch components in one shot.
-		err := sendCommand("SESSION_CREATE_RUN", buildRunPayload(name, mode, paths))
+		payload := core.SessionCreateRunPayload{
+			Name:  name,
+			Mode:  mode,
+			Paths: paths,
+		}
+		err := sendCommand("SESSION_CREATE_RUN", payload)
 		if err != nil {
 			log.Fatal(err)
 		}
 	},
 }
 
-// aegis session attach <name|id> --path <p>...
-//
-// Attaches new components to an already existing session.
 var sessionAttachCmd = &cobra.Command{
-	Use:     "attach <name|id>",
-	Short:   "Attach components to an existing session",
-	Example: `  aegis session attach my-session --path ./comp1 --path ./comp2`,
-	Args:    cobra.ExactArgs(1),
+	Use:   "attach <name|id>",
+	Short: "Attach components to an existing session",
+	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		nameOrID := args[0]
-		err := sendCommand("SESSION_ATTACH", buildRunPayload(nameOrID, "", paths))
+		payload := core.SessionAttachPayload{
+			SessionID: args[0],
+			Paths:     paths,
+		}
+		err := sendCommand("SESSION_ATTACH", payload)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -89,7 +83,10 @@ var sessionStartCmd = &cobra.Command{
 	Short: "Start a stopped session",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		err := sendCommand("SESSION_START", args[0])
+		payload := core.SessionActionPayload{
+			SessionID: args[0],
+		}
+		err := sendCommand("SESSION_START", payload)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -101,7 +98,10 @@ var sessionStopCmd = &cobra.Command{
 	Short: "Stop a running session",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		err := sendCommand("SESSION_STOP", args[0])
+		payload := core.SessionActionPayload{
+			SessionID: args[0],
+		}
+		err := sendCommand("SESSION_STOP", payload)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -112,19 +112,22 @@ var sessionListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all sessions",
 	Run: func(cmd *cobra.Command, args []string) {
-		err := sendCommand("SESSION_LIST", "")
+		err := sendCommand("SESSION_LIST", nil)
 		if err != nil {
 			log.Fatal(err)
 		}
 	},
 }
 
-var sessionStatusCmd = &cobra.Command{
-	Use:   "status <name|id>",
-	Short: "Gets status of a specific session",
+var sessionStateCmd = &cobra.Command{
+	Use:   "state <name|id>",
+	Short: "Gets state of a specific session",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		err := sendCommand("SESSION_STATUS", args[0])
+		payload := core.SessionActionPayload{
+			SessionID: args[0],
+		}
+		err := sendCommand("SESSION_STATE", payload)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -136,7 +139,10 @@ var sessionDeleteCmd = &cobra.Command{
 	Short: "Delete a session",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		err := sendCommand("SESSION_DELETE", args[0])
+		payload := core.SessionActionPayload{
+			SessionID: args[0],
+		}
+		err := sendCommand("SESSION_DELETE", payload)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -153,10 +159,14 @@ var componentCmd = &cobra.Command{
 }
 
 var componentListCmd = &cobra.Command{
-	Use:   "list",
+	Use:   "list <session_id>",
 	Short: "List components in a session",
+	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		err := sendCommand("COMPONENT_LIST", session)
+		payload := core.ComponentListPayload{
+			SessionID: args[0],
+		}
+		err := sendCommand("COMPONENT_LIST", payload)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -164,11 +174,15 @@ var componentListCmd = &cobra.Command{
 }
 
 var componentGetCmd = &cobra.Command{
-	Use:   "get <id>",
+	Use:   "get <session_id> <component_id>",
 	Short: "Get raw component info",
-	Args:  cobra.ExactArgs(1),
+	Args:  cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
-		err := sendCommand("COMPONENT_GET", fmt.Sprintf("%s|%s", session, args[0]))
+		payload := core.ComponentGetPayload{
+			SessionID:   args[0],
+			ComponentID: args[1],
+		}
+		err := sendCommand("COMPONENT_GET", payload)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -176,11 +190,14 @@ var componentGetCmd = &cobra.Command{
 }
 
 var componentDescribeCmd = &cobra.Command{
-	Use:   "describe <id>",
-	Short: "Describe a component (formatted output)",
+	Use:   "describe <session_id>",
+	Short: "Describe components in a session",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		err := sendCommand("COMPONENT_DESCRIBE", fmt.Sprintf("%s|%s", session, args[0]))
+		payload := core.ComponentListPayload{
+			SessionID: args[0],
+		}
+		err := sendCommand("COMPONENT_DESCRIBE", payload)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -201,7 +218,41 @@ var healthCheckCmd = &cobra.Command{
 	Short: "Run a health check (all|data|sessions)",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		err := sendCommand("HEALTH_CHECK", args[0])
+		payload := core.HealthCheckPayload{
+			Target: args[0],
+		}
+		err := sendCommand("HEALTH_CHECK", payload)
+		if err != nil {
+			log.Fatal(err)
+		}
+	},
+}
+
+var healthSessionCmd = &cobra.Command{
+	Use:   "session <id>",
+	Short: "Health check for a specific session",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		payload := core.HealthCheckSessionPayload{
+			SessionID: args[0],
+		}
+		err := sendCommand("HEALTH_CHECK_SESSION", payload)
+		if err != nil {
+			log.Fatal(err)
+		}
+	},
+}
+
+var healthComponentCmd = &cobra.Command{
+	Use:   "component <session_id> <component_id>",
+	Short: "Health check for a specific component",
+	Args:  cobra.ExactArgs(2),
+	Run: func(cmd *cobra.Command, args []string) {
+		payload := core.HealthCheckComponentPayload{
+			SessionID:   args[0],
+			ComponentID: args[1],
+		}
+		err := sendCommand("HEALTH_CHECK_COMPONENT", payload)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -209,22 +260,10 @@ var healthCheckCmd = &cobra.Command{
 }
 
 /////////////////////////
-// HELPERS
-/////////////////////////
-
-// buildRunPayload encodes session identity, mode, and component paths
-// into a single pipe-delimited string:
-//
-//	<name_or_id>|<mode>|<path1>,<path2>,...
-func buildRunPayload(nameOrID, mode string, paths []string) string {
-	return fmt.Sprintf("%s|%s|%s", nameOrID, mode, strings.Join(paths, ","))
-}
-
-/////////////////////////
 // SEND
 /////////////////////////
 
-func sendCommand(cmdType, payload string) error {
+func sendCommand(cmdType string, payload interface{}) error {
 	cfg, err := config.LoadGlobals()
 	if err != nil {
 		return err
@@ -236,7 +275,15 @@ func sendCommand(cmdType, payload string) error {
 	}
 	defer conn.Close()
 
-	if err := json.NewEncoder(conn).Encode(Command{Type: cmdType, Payload: payload}); err != nil {
+	requestID := uuid.NewString()
+
+	cmd := core.Command{
+		RequestID: requestID,
+		Type:      cmdType,
+		Payload:   payload,
+	}
+
+	if err := json.NewEncoder(conn).Encode(cmd); err != nil {
 		return err
 	}
 
@@ -262,11 +309,6 @@ func init() {
 	sessionAttachCmd.Flags().StringArrayVar(&paths, "path", []string{}, "Component binary path (repeatable)")
 	_ = sessionAttachCmd.MarkFlagRequired("path")
 
-	// component flags
-	componentListCmd.Flags().StringVar(&session, "session", "", "Session name or ID")
-	componentGetCmd.Flags().StringVar(&session, "session", "", "Session name or ID")
-	componentDescribeCmd.Flags().StringVar(&session, "session", "", "Session name or ID")
-
 	// tree
 	rootCmd.AddCommand(sessionCmd)
 	rootCmd.AddCommand(componentCmd)
@@ -276,7 +318,7 @@ func init() {
 	sessionCmd.AddCommand(sessionAttachCmd)
 	sessionCmd.AddCommand(sessionStartCmd)
 	sessionCmd.AddCommand(sessionStopCmd)
-	sessionCmd.AddCommand(sessionStatusCmd)
+	sessionCmd.AddCommand(sessionStateCmd)
 	sessionCmd.AddCommand(sessionListCmd)
 	sessionCmd.AddCommand(sessionDeleteCmd)
 
@@ -285,4 +327,6 @@ func init() {
 	componentCmd.AddCommand(componentDescribeCmd)
 
 	healthCmd.AddCommand(healthCheckCmd)
+	healthCmd.AddCommand(healthSessionCmd)
+	healthCmd.AddCommand(healthComponentCmd)
 }

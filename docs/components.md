@@ -1,17 +1,26 @@
 ### Goal
 El objetivo de conectar los componentes al socket /tmp/aegis-components.sock es registarse en Aegis y mantener una comunicación abierta para recibir o enviar COMANDOS.
 Ejemplo de comandos del componente a Aegis:
-- {"COMMAND": "READY"}
-- {"COMMAND": "ACK"}
-- {"COMMAND": "WAIT"}
-- {"COMMAND": "ERROR"}
-- {"COMMAND": "FINISHED"}
-Ejemplo de comandos de Aegis al componente:
-- {"COMMAND": "HEARTBEAT"}
-- {"COMMAND": "STARTED"}
-- {"COMMAND": "WAIT"}
+- {"command": "READY"}
+- {"command": "ACK"}
+- {"command": "WAIT"}
+- {"command": "ERROR"}
+- {"command": "FINISHED"}
 - {
-    "data_socket": "/tmp/aegis-data-stream-<id>.sock",
+    "session_token": <Gets session token from the env>,
+    component_name: "data_engine",
+    supported_symbols: ["BTCUSDT", "ETHUSDT"],
+    requires: ["klines", "orderbook"],
+    supported_timeframes: ["1m", "15m", "30m", "4h", "1d"]
+    
+}
+Ejemplo de comandos de Aegis al componente:
+- {"command": "HEARTBEAT"}
+- {"command": "STARTED"}
+- {"command": "WAIT"}
+- {
+    "command": "CONFIGURATION",
+    "data_stream_socket": "/tmp/aegis-data-stream-<id>.sock",
     "topics": ["klines.BTCUSDT.1m", "orderbook.BTCUSDT"]
 }
 
@@ -38,6 +47,7 @@ Ejemplo de flujo:
 components_socket: "/tmp/aegis-components.sock" # This is the socket where all components will register themselves to the communication engine. The communication engine will keep track of all registered components and their capabilities (e.g., which symbols and timeframes they support).
 # Example of expected payload: 
 # {
+#   session_token: <get session token from the env>,
 #   component_name: "data_engine", 
 #   supported_symbols: ["BTCUSDT", "ETHUSDT"], 
 #   requires: ["klines", "orderbook"], 

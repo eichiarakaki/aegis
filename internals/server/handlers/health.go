@@ -1,83 +1,96 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net"
+	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/eichiarakaki/aegis/internals/core"
-	"github.com/eichiarakaki/aegis/internals/logger"
-	"github.com/eichiarakaki/aegis/internals/services/health"
 )
 
-type HealthResponse struct {
-	Status  string `json:"status"`
-	Target  string `json:"target"`
-	Message string `json:"message"`
+var daemonStart = time.Now()
+
+func HandleGlobalHealth(requestID string, conn net.Conn, store *core.SessionStore) {
+	totalSessions := store.Count()
+	runningSessions := store.CountByState(core.SessionRunning)
+
+	totalComponents := store.TotalComponents()
+	runningComponents := store.TotalComponentsByStateFromAllSessions(core.ComponentRunning)
+
+	data := map[string]interface{}{
+		"daemon": map[string]interface{}{
+			"status":         "healthy",
+			"uptime_seconds": int(time.Since(daemonStart).Seconds()),
+			"version":        "x",
+		},
+		"sessions": map[string]interface{}{
+			"total":   totalSessions,
+			"running": runningSessions,
+			"stopped": totalSessions - runningSessions,
+		},
+		"components": map[string]interface{}{
+			"total":   totalComponents,
+			"running": runningComponents,
+			"failed":  totalComponents - runningComponents,
+		},
+	}
+
+	core.WriteJSON(conn, core.Response{
+		RequestID: requestID,
+		Command:   "HEALTH_CHECK",
+		Status:    "ok",
+		Data:      data,
+	})
 }
 
-func HandleHealthCheck(target string, conn net.Conn, sessionStore *core.SessionStore) {
-	var response HealthResponse
+func HandleSessionHealth(requestID string, conn net.Conn, store *core.SessionStore) {
+	// Implement parsing real payload later
+	core.WriteJSON(conn, core.Response{
+		RequestID: requestID,
+		Command:   "HEALTH_CHECK_SESSION",
+		Status:    "error",
+		ErrorCode: "NOT_IMPLEMENTED",
+		Message:   "Session health not implemented yet",
+		Data:      map[string]interface{}{},
+	})
+}
+
+func HandleComponentHealth(requestID string, conn net.Conn, store *core.SessionStore) {
+	core.WriteJSON(conn, core.Response{
+		RequestID: requestID,
+		Command:   "HEALTH_CHECK_COMPONENT",
+		Status:    "error",
+		ErrorCode: "NOT_IMPLEMENTED",
+		Message:   "Component health not implemented yet",
+		Data:      map[string]interface{}{},
+	})
+}
+
+func HandleHealthCheck(target string, conn net.Conn, store *core.SessionStore) {
+	requestID := uuid.NewString()
 
 	switch target {
 
-	case "all":
-		err := health.CheckAll()
-		if err != nil {
-			response = HealthResponse{
-				Status:  "ERROR",
-				Target:  "all",
-				Message: err.Error(),
-			}
-			logger.Error("Health check failed:", err)
-		}
+	case "", "all":
+		HandleGlobalHealth(requestID, conn, store)
 
-		response = HealthResponse{
-			Status:  "OK",
-			Target:  "all",
-			Message: "All subsystems healthy",
-		}
+	case "session":
+		// Expect payload: session:<id>
+		HandleSessionHealth(requestID, conn, store)
 
-	case "data":
-		err := health.DataHealthCheck()
-		if err != nil {
-			response = HealthResponse{
-				Status:  "ERROR",
-				Target:  "data",
-				Message: err.Error(),
-			}
-			logger.Error("Data health check failed:", err)
-		}
-
-		response = HealthResponse{
-			Status:  "OK",
-			Target:  "data",
-			Message: "Data quality and availability healthy",
-		}
-
-	case "sessions":
-		err := health.SessionsHealthCheck()
-		if err != nil {
-			response = HealthResponse{
-				Status:  "ERROR",
-				Target:  "sessions",
-				Message: err.Error(),
-			}
-			logger.Error("Session manager health check failed:", err)
-		}
-
-		response = HealthResponse{
-			Status:  "OK",
-			Target:  "sessions",
-			Message: "Session manager healthy",
-		}
+	case "component":
+		// Expect payload: component:<session_id>|<component_id>
+		HandleComponentHealth(requestID, conn, store)
 
 	default:
-		response = HealthResponse{
-			Status:  "ERROR",
-			Target:  target,
-			Message: "Unknown health target",
-		}
+		core.WriteJSON(conn, core.Response{
+			RequestID: requestID,
+			Command:   "HEALTH_CHECK",
+			Status:    "error",
+			ErrorCode: "INVALID_TARGET",
+			Message:   "Invalid health target",
+			Data:      map[string]interface{}{},
+		})
 	}
-
-	json.NewEncoder(conn).Encode(response)
 }

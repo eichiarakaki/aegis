@@ -7,29 +7,52 @@ import (
 	"time"
 )
 
-type StatusType int
+type SessionStateType int
 
 const (
-	SessionCreated StatusType = iota
+	SessionInitialized SessionStateType = iota
 	SessionStarting
 	SessionRunning
 	SessionStopping
 	SessionStopped
 	SessionFinished
+	SessionError
 )
 
+func SessionStateToString(state SessionStateType) string {
+	switch state {
+	case SessionInitialized:
+		return "SessionInitialized"
+	case SessionStarting:
+		return "SessionStarting"
+	case SessionRunning:
+		return "SessionRunning"
+	case SessionStopping:
+		return "SessionStopping"
+	case SessionStopped:
+		return "SessionStopped"
+	case SessionFinished:
+		return "SessionFinished"
+	case SessionError:
+		return "SessionError"
+	default: // Unreachable
+		return "Unknown"
+	}
+}
+
 type Session struct {
-	ID     string
-	Name   string
-	Mode   string // realtime | historical
-	Status StatusType
+	ID    string
+	Name  string
+	Mode  string // realtime | historical
+	State SessionStateType
 
 	// Why map instead of slices? O(1) lookups by component name, easier to manage dynamic additions/removals
 	Components map[string]*Component
 
-	CreatedAt time.Time
-	StartedAt *time.Time
-	StoppedAt *time.Time
+	UpTimeSeconds time.Duration
+	CreatedAt     time.Time
+	StartedAt     *time.Time
+	StoppedAt     *time.Time
 
 	mu sync.RWMutex
 }
@@ -37,12 +60,13 @@ type Session struct {
 // NewSession creates a new session with the given name and mode. The session starts in the Created state with an empty component list.
 func NewSession(id string, name string, mode string) *Session {
 	return &Session{
-		ID:         id,
-		Name:       name,
-		Mode:       mode,
-		Status:     SessionCreated,
-		Components: make(map[string]*Component),
-		CreatedAt:  time.Now(),
+		ID:            id,
+		Name:          name,
+		Mode:          mode,
+		State:         SessionInitialized,
+		Components:    make(map[string]*Component),
+		CreatedAt:     time.Now(),
+		UpTimeSeconds: 0,
 	}
 }
 
@@ -51,12 +75,12 @@ func (s *Session) SetToRunning() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.Status != SessionStarting && s.Status != SessionStopped {
+	if s.State != SessionStarting && s.State != SessionStopped {
 		return errors.New("session cannot be started from the current state")
 	}
 
 	now := time.Now()
-	s.Status = SessionRunning
+	s.State = SessionRunning
 	s.StartedAt = &now
 	return nil
 }
@@ -66,12 +90,12 @@ func (s *Session) SetToStarting() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.Status != SessionCreated {
+	if s.State != SessionInitialized {
 		return errors.New("session cannot be started from the current state")
 	}
 
 	now := time.Now()
-	s.Status = SessionStarting
+	s.State = SessionStarting
 	s.StartedAt = &now
 	return nil
 }
@@ -81,12 +105,12 @@ func (s *Session) SetToStop() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.Status != SessionRunning {
+	if s.State != SessionRunning {
 		return errors.New("session is not running")
 	}
 
 	now := time.Now()
-	s.Status = SessionStopped
+	s.State = SessionStopped
 	s.StoppedAt = &now
 	return nil
 }
@@ -96,7 +120,7 @@ func (s *Session) AddComponent(c *Component) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.Status == SessionFinished {
+	if s.State == SessionFinished {
 		return errors.New("cannot add component to finished session")
 	}
 
@@ -108,11 +132,11 @@ func (s *Session) AddComponent(c *Component) error {
 	return nil
 }
 
-// GetStatus returns the current status of the session. It acquires a read lock to ensure thread safety.
-func (s *Session) GetStatus() StatusType {
+// GetState returns the current state of the session. It acquires a read lock to ensure thread safety.
+func (s *Session) GetState() SessionStateType {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.Status
+	return s.State
 }
 
 // SessionStore manages all active sessions in memory. It provides thread-safe methods to add, retrieve, list, and delete sessions.
@@ -186,12 +210,12 @@ func (store *SessionStore) GetSessionsByMode(mode string) []*Session {
 	return sessions
 }
 
-func (store *SessionStore) GetSessionsByStatus(status StatusType) []*Session {
+func (store *SessionStore) GetSessionsByStatus(state SessionStateType) []*Session {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
 	var sessions []*Session
 	for _, s := range store.sessions {
-		if s.GetStatus() == status {
+		if s.GetState() == state {
 			sessions = append(sessions, s)
 		}
 	}
@@ -224,4 +248,52 @@ func (store *SessionStore) DeleteSession(id string) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	delete(store.sessions, id)
+}
+
+func (store *SessionStore) Count() int {
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	return len(store.sessions)
+}
+
+func (store *SessionStore) CountByState(state SessionStateType) int {
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+
+	count := 0
+	for _, session := range store.sessions {
+		if session.State == state {
+			count++
+		}
+	}
+	return count
+}
+
+func (store *SessionStore) TotalComponents() int {
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+
+	count := 0
+	for _, session := range store.sessions {
+		count += len(session.Components)
+	}
+
+	return count
+}
+
+// TotalComponentsByStateFromAllSessions This is a SessionStore function because we need the State of MULTIPLE components, not only one.
+func (store *SessionStore) TotalComponentsByStateFromAllSessions(state ComponentStateType) int {
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	count := 0
+
+	for _, session := range store.sessions {
+		for _, component := range session.Components {
+			if component.State == state {
+				count++
+			}
+		}
+	}
+
+	return count
 }
