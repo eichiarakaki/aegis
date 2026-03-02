@@ -22,61 +22,78 @@ const (
 func SessionStateToString(state SessionStateType) string {
 	switch state {
 	case SessionInitialized:
-		return "SessionInitialized"
+		return "initialized"
 	case SessionStarting:
-		return "SessionStarting"
+		return "starting"
 	case SessionRunning:
-		return "SessionRunning"
+		return "running"
 	case SessionStopping:
-		return "SessionStopping"
+		return "stopping"
 	case SessionStopped:
-		return "SessionStopped"
+		return "stopped"
 	case SessionFinished:
-		return "SessionFinished"
+		return "finished"
 	case SessionError:
-		return "SessionError"
-	default: // Unreachable
-		return "Unknown"
+		return "error"
+	default:
+		return "unknown"
 	}
 }
 
 type Session struct {
-	ID    string
-	Name  string
-	Mode  string // realtime | historical
-	State SessionStateType
-
-	// Why map instead of slices? O(1) lookups by component name, easier to manage dynamic additions/removals
+	ID         string
+	Name       string
+	Mode       string // realtime | historical
+	State      SessionStateType
 	Components map[string]*Component
 
-	UpTimeSeconds time.Duration
-	CreatedAt     time.Time
-	StartedAt     *time.Time
-	StoppedAt     *time.Time
+	CreatedAt time.Time
+	StartedAt *time.Time
+	StoppedAt *time.Time
 
 	mu sync.RWMutex
 }
 
-// NewSession creates a new session with the given name and mode. The session starts in the Created state with an empty component list.
+// NewSession creates a new session with the given name and mode.
 func NewSession(id string, name string, mode string) *Session {
 	return &Session{
-		ID:            id,
-		Name:          name,
-		Mode:          mode,
-		State:         SessionInitialized,
-		Components:    make(map[string]*Component),
-		CreatedAt:     time.Now(),
-		UpTimeSeconds: 0,
+		ID:         id,
+		Name:       name,
+		Mode:       mode,
+		State:      SessionInitialized,
+		Components: make(map[string]*Component),
+		CreatedAt:  time.Now(),
 	}
 }
 
-// SetToRunning sets to start...
+// GetUptimeSeconds calculates and returns the uptime in seconds.
+// Returns 0 if the session has not started yet.
+// If the session is running or was stopped, returns the duration between StartedAt and StoppedAt (or now).
+func (s *Session) GetUptimeSeconds() int64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Session hasn't started yet
+	if s.StartedAt == nil {
+		return 0
+	}
+
+	// Session is running or in an intermediate state
+	if s.StoppedAt == nil {
+		return int64(time.Since(*s.StartedAt).Seconds())
+	}
+
+	// Session has stopped, calculate duration between start and stop
+	return int64(s.StoppedAt.Sub(*s.StartedAt).Seconds())
+}
+
+// SetToRunning transitions the session from SessionStarting to SessionRunning.
 func (s *Session) SetToRunning() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if s.State != SessionStarting && s.State != SessionStopped {
-		return errors.New("session cannot be started from the current state")
+		return errors.New("session cannot transition to running from current state")
 	}
 
 	now := time.Now()
@@ -85,13 +102,13 @@ func (s *Session) SetToRunning() error {
 	return nil
 }
 
-// SetToStarting sets to start...
+// SetToStarting transitions the session from SessionInitialized to SessionStarting.
 func (s *Session) SetToStarting() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if s.State != SessionInitialized {
-		return errors.New("session cannot be started from the current state")
+		return errors.New("session cannot transition to starting from current state")
 	}
 
 	now := time.Now()
@@ -100,13 +117,14 @@ func (s *Session) SetToStarting() error {
 	return nil
 }
 
-// SetToStop Stop transitions the session to Stopped state and records the stop time. It returns an error if the session is not currently running.
+// SetToStop transitions the session from SessionRunning to SessionStopped.
+// It records the stop time and calculates the uptime.
 func (s *Session) SetToStop() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.State != SessionRunning {
-		return errors.New("session is not running")
+	if s.State != SessionRunning && s.State != SessionStarting {
+		return errors.New("session is not running or starting")
 	}
 
 	now := time.Now()
@@ -115,7 +133,8 @@ func (s *Session) SetToStop() error {
 	return nil
 }
 
-// AddComponent adds a component to the session. Returns an error if the session is finished or if the component already exists.
+// AddComponent adds a component to the session.
+// Returns an error if the session is finished or if the component already exists.
 func (s *Session) AddComponent(c *Component) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -132,14 +151,14 @@ func (s *Session) AddComponent(c *Component) error {
 	return nil
 }
 
-// GetState returns the current state of the session. It acquires a read lock to ensure thread safety.
+// GetState returns the current state of the session.
 func (s *Session) GetState() SessionStateType {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.State
 }
 
-// SessionStore manages all active sessions in memory. It provides thread-safe methods to add, retrieve, list, and delete sessions.
+// SessionStore manages all active sessions in memory.
 type SessionStore struct {
 	sessions map[string]*Session
 	mu       sync.RWMutex
@@ -222,15 +241,33 @@ func (store *SessionStore) GetSessionsByStatus(state SessionStateType) []*Sessio
 	return sessions
 }
 
-// GetSessionByIDApproximation allows retrieval of a session by its ID or by an approximation of the ID (first 4 characters). This is useful for user-friendly commands where the full ID may be cumbersome to type. It returns the session and a boolean indicating if it was found.
-func (store *SessionStore) GetSessionByIDApproximation(id string) (*Session, bool) {
+// GetSessionByIDApproximation retrieves a session by its full ID or by an approximation.
+func (store *SessionStore) GetSessionByIDApproximation(approximation string) (*Session, bool) {
+	if approximation == "" {
+		return nil, false
+	}
+
+	const minApproximationLength = 4
+
 	store.mu.RLock()
 	defer store.mu.RUnlock()
-	for _, s := range store.sessions {
-		if s.ID == id || (len(id) >= 4 && len(s.ID) >= 4 && s.ID[:4] == id[:4]) {
-			return s, true
+
+	// First, try exact match
+	for _, session := range store.sessions {
+		if session.ID == approximation {
+			return session, true
 		}
 	}
+
+	// Then, try approximation if length is sufficient
+	if len(approximation) >= minApproximationLength {
+		for _, session := range store.sessions {
+			if len(session.ID) >= minApproximationLength && session.ID[:minApproximationLength] == approximation[:minApproximationLength] {
+				return session, true
+			}
+		}
+	}
+
 	return nil, false
 }
 
@@ -281,7 +318,6 @@ func (store *SessionStore) TotalComponents() int {
 	return count
 }
 
-// TotalComponentsByStateFromAllSessions This is a SessionStore function because we need the State of MULTIPLE components, not only one.
 func (store *SessionStore) TotalComponentsByStateFromAllSessions(state ComponentStateType) int {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
