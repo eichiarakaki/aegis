@@ -63,7 +63,7 @@ func NewSession(id string, name string, mode string) *Session {
 		Name:      name,
 		Mode:      mode,
 		State:     SessionInitialized,
-		Registry:  nil,
+		Registry:  component.NewComponentRegistry(),
 		CreatedAt: time.Now(),
 	}
 }

@@ -9,7 +9,6 @@ import (
 
 	"github.com/eichiarakaki/aegis/internals/config"
 	"github.com/eichiarakaki/aegis/internals/core"
-	"github.com/eichiarakaki/aegis/internals/core/component"
 	"github.com/eichiarakaki/aegis/internals/logger"
 	servicescomponent "github.com/eichiarakaki/aegis/internals/services/component"
 )
@@ -26,15 +25,15 @@ func InitDaemon() {
 	aegisSocket := cfg.AegisCLISocket
 	componentsSocket := cfg.ComponentsSocket
 
+	// Session store is the single source of truth for sessions and their registries.
 	sessionStore := core.NewSessionStore()
-	componentRegistry := component.NewComponentRegistry()
 
-	// Initialize connection pool and heartbeat monitor (shared across all connections)
+	// Connection pool and heartbeat monitor are shared across all component connections.
 	pool := servicescomponent.NewConnectionPool()
-	monitor := servicescomponent.NewComponentHeartbeatMonitor(componentRegistry, sessionStore, pool)
+	monitor := servicescomponent.NewComponentHeartbeatMonitor(sessionStore, pool)
 	go monitor.Start()
 
-	// Clean up stale sockets
+	// Clean up stale sockets from previous runs
 	for _, socket := range []string{aegisSocket, componentsSocket} {
 		if err := os.RemoveAll(socket); err != nil {
 			logger.Error("Failed to remove stale socket:", socket, err)
@@ -42,7 +41,7 @@ func InitDaemon() {
 		}
 	}
 
-	// Aegis CLI socket
+	// Bind CLI socket
 	cliListener, err := net.Listen("unix", aegisSocket)
 	if err != nil {
 		logger.Error("Failed to bind CLI socket:", err)
@@ -51,7 +50,7 @@ func InitDaemon() {
 	defer cliListener.Close()
 	logger.Info("Aegis daemon listening on", aegisSocket)
 
-	// Components socket
+	// Bind components socket
 	componentsListener, err := net.Listen("unix", componentsSocket)
 	if err != nil {
 		logger.Error("Failed to bind components socket:", err)
@@ -60,7 +59,7 @@ func InitDaemon() {
 	defer componentsListener.Close()
 	logger.Info("Components server listening on", componentsSocket)
 
-	// Handle shutdown signals
+	// Handle OS shutdown signals
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
@@ -69,7 +68,6 @@ func InitDaemon() {
 		for {
 			conn, err := cliListener.Accept()
 			if err != nil {
-				// Listener was closed, stop accepting
 				if errors.Is(err, net.ErrClosed) {
 					return
 				}
@@ -81,6 +79,8 @@ func InitDaemon() {
 	}()
 
 	// Accept component connections
+	// Each component must provide a valid session token in its REGISTER payload.
+	// The component is then registered into the registry of that specific session.
 	go func() {
 		for {
 			conn, err := componentsListener.Accept()
@@ -91,7 +91,7 @@ func InitDaemon() {
 				logger.Error("Component connection error:", err)
 				continue
 			}
-			go servicescomponent.HandleComponentConnection(conn, componentRegistry, sessionStore, pool)
+			go servicescomponent.HandleComponentConnection(conn, sessionStore, pool)
 		}
 	}()
 
@@ -99,7 +99,6 @@ func InitDaemon() {
 	sig := <-quit
 	logger.Info("Received signal, shutting down:", sig)
 
-	// Graceful shutdown
 	cliListener.Close()
 	componentsListener.Close()
 	logger.Info("Aegis daemon stopped")
