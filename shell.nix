@@ -1,12 +1,5 @@
-{ pkgs ? import <nixpkgs> {
-    config = {
-      allowUnfree = true;
-    };
-  } 
-}:
-
-pkgs.mkShell {
-  buildInputs = with pkgs; [
-      go_1_26
-  ];
-}
+let
+  flake = builtins.getFlake (toString ./.);
+  system = builtins.currentSystem;
+in
+flake.devShells.${system}.default
