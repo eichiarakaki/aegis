@@ -4,8 +4,9 @@ set shell := ["sh", "-c"]
 DAEMON := "./cmd/aegisd/*"
 CLI    := "./cmd/aegis/*"
 
-# --- Build Commands ---
+INSTALL_DIR := "~/.local/bin"
 
+# --- Build Commands ---
 # Build everything
 all: build-daemon build-cli
 
@@ -17,8 +18,24 @@ build-daemon:
 build-cli:
     go build -o bin/aegis {{CLI}}
 
-# --- Development Commands ---
+# Install both binaries to ~/go/bin (or change INSTALL_DIR to /usr/local/bin etc.)
+install: build-daemon build-cli
+    @mkdir -p {{INSTALL_DIR}}
+    cp bin/aegisd {{INSTALL_DIR}}/aegisd
+    cp bin/aegis  {{INSTALL_DIR}}/aegis
+    @echo "Installed:"
+    @which aegisd  || echo "  → aegisd not found in PATH"
+    @which aegis   || echo "  → aegis not found in PATH"
+    @echo ""
+    @echo "Make sure {{INSTALL_DIR}} is in your PATH"
 
+# Uninstall (remove from ~/go/bin or /usr/local/bin)
+uninstall:
+    rm -f {{INSTALL_DIR}}/aegisd
+    rm -f {{INSTALL_DIR}}/aegis
+    @echo "Removed aegisd and aegis from {{INSTALL_DIR}}"
+
+# --- Development Commands ---
 # Run the daemon with hot-reload (watches cmd/aegisd)
 dev-daemon:
     air --build.cmd "go build -o bin/aegisd {{DAEMON}}" --build.bin "./bin/aegisd"
