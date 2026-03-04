@@ -6,10 +6,10 @@ import (
 
 func Print() {
 	logger.Info("=========================================================")
-	logger.Info("Aegis Daemon - Deterministic Event Distribution Engine")
+	logger.Info("Aegis Daemon - Institutional-grade process orchestration daemon for algorithmic trading.")
 	logger.Info("Version: 0.1.0")
 	logger.Info("Author: Eichi Arakaki")
-	logger.Info("License: GNU GENERAL PUBLIC LICENSE Version 3 (GPLv3)")
+	logger.Info("License: GNU GENERAL PUBLIC LICENSE")
 	logger.Info("Repository: https://github.com/eichiarakaki/aegis")
 	logger.Info("========================================================")
 	cpuInfo, err := GetCPUInfo()
