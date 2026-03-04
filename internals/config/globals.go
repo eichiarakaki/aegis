@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"gopkg.in/yaml.v3"
 )
@@ -15,11 +16,12 @@ type Globals struct {
 type Config struct {
 	AegisCLISocket   string
 	ComponentsSocket string
+	AegisPIDFile     string
 }
 
 func LoadGlobals() (*Config, error) {
 	var globals Globals
-	// First check if the environment variable is set, if so, use it directly
+
 	aegis_env := os.Getenv("AEGIS_CLI_SOCKET")
 	components_env := os.Getenv("COMPONENTS_SOCKET")
 
@@ -29,12 +31,11 @@ func LoadGlobals() (*Config, error) {
 		return &Config{
 			AegisCLISocket:   globals.AegisCLISocket,
 			ComponentsSocket: globals.ComponentsSocket,
+			AegisPIDFile:     defaultPIDFile(),
 		}, nil
 	}
 
-	// If not, read from the config file
 	filePath := "config/globals.yaml"
-
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
@@ -51,5 +52,15 @@ func LoadGlobals() (*Config, error) {
 	return &Config{
 		AegisCLISocket:   globals.AegisCLISocket,
 		ComponentsSocket: globals.ComponentsSocket,
+		AegisPIDFile:     defaultPIDFile(),
 	}, nil
+}
+
+// defaultPIDFile returns $XDG_RUNTIME_DIR/aegis.pid if available,
+// otherwise falls back to os.TempDir().
+func defaultPIDFile() string {
+	if xdg := os.Getenv("XDG_RUNTIME_DIR"); xdg != "" {
+		return filepath.Join(xdg, "aegis.pid")
+	}
+	return filepath.Join(os.TempDir(), "aegis.pid")
 }

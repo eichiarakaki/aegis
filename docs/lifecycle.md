@@ -3,13 +3,13 @@
 User gives a command via the aegis CLI:
 ```bash
 aegis session create <session_name> --mode <mode>
-aegis session attach <session_name|session_id> --path <comp1> -- <comp2>
+aegis session attach <session_name|session_id> --path <comp1> -- <comp2> # Necessary to run the programs with dynamic environment variables
 ```
 
 > Then the Aegis Daemon runs the components with the session ID as Env variable.
 
 > When the component is run, it connects to the /tmp/aegis-components.sock and sends a JSON:
-```json
+```json (Receive REGISTER message)
 {
   "protocol_version": "0.1.0",
   "message_id": "uuid-1",
@@ -38,7 +38,7 @@ aegis session attach <session_name|session_id> --path <comp1> -- <comp2>
   "type": "ERROR",
   "command": "REGISTRATION_FAILED",
   "payload": {
-    "reason": "INVALID_SESSION_TOKEN"
+    "reason": "WRONG_SESSION_TOKEN"
   }
 }
 ```
@@ -47,9 +47,9 @@ aegis session attach <session_name|session_id> --path <comp1> -- <comp2>
 
 **Aegis Daemon do**
 1. Creates a core.Component and fills it with the component's data.
-2. Adds it to the respective session.
+2. Adds it to the session registry.
 3. Returns a JSON with the following structure to the client:
-```json
+```json (REGISTERED)
 {
   "protocol_version": "0.1.0",
   "message_id": "uuid-2",
@@ -68,7 +68,7 @@ aegis session attach <session_name|session_id> --path <comp1> -- <comp2>
 ```
 
 > Then, when the component gets ready, it sends the following JSON structure to Aegis
-```json
+```json (STEP 5: READY)
 {
   "protocol_version": "0.1.0",
   "message_id": "uuid-3",
@@ -175,3 +175,14 @@ aegis session attach <session_name|session_id> --path <comp1> -- <comp2>
   }
 }
 ```
+
+
+> Then wait until the user sends the following instructions to the Aegis Daemon
+```sh
+aegis session start <id|name>
+```
+> The Aegis daemon will:
+1. Change the specified session from `INITIALIZED` to `STARTING`
+2. In this phase, the Daemon will configure its data for the orchestrator
+3. Change the session status from `STARTING` to `RUNNING`
+4. Orchestrator will start to dispatch the data SIMULTANEOUSLY towards all its topics

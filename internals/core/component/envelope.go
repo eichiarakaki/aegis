@@ -20,6 +20,8 @@ import (
 }
 */
 
+const ProtocolVersion = "0.1.0"
+
 // MessageType classifies the message type in the protocol
 type MessageType string
 
@@ -77,15 +79,15 @@ const (
 
 // Envelope is the standard structure for ALL the messages
 type Envelope struct {
-	ProtocolVersion string                 `json:"protocol_version"`
-	MessageID       string                 `json:"message_id"`
-	CorrelationID   *string                `json:"correlation_id"`
-	Timestamp       string                 `json:"timestamp"`
-	Source          string                 `json:"source"`
-	Target          string                 `json:"target"`
-	Type            MessageType            `json:"type"`
-	Command         CommandType            `json:"command"`
-	Payload         map[string]interface{} `json:"payload"`
+	ProtocolVersion string         `json:"protocol_version"`
+	MessageID       string         `json:"message_id"`
+	CorrelationID   *string        `json:"correlation_id"`
+	Timestamp       string         `json:"timestamp"`
+	Source          string         `json:"source"`
+	Target          string         `json:"target"`
+	Type            MessageType    `json:"type"`
+	Command         CommandType    `json:"command"`
+	Payload         map[string]any `json:"payload"`
 }
 
 // RegisterPayload is the payload for the REGISTER command

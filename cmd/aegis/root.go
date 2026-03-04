@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
+	"os/exec"
+	"syscall"
 
 	"github.com/eichiarakaki/aegis/internals/config"
 	"github.com/eichiarakaki/aegis/internals/core"
@@ -20,6 +23,145 @@ var (
 var rootCmd = &cobra.Command{
 	Use:   "aegis",
 	Short: "Aegis CLI - Control plane for Aegis daemon",
+}
+
+/////////////////////////
+// DAEMON COMMANDS
+/////////////////////////
+
+var daemonCmd = &cobra.Command{
+	Use:   "daemon",
+	Short: "Manage the Aegis daemon process",
+}
+
+var daemonStartCmd = &cobra.Command{
+	Use:   "start",
+	Short: "Start the Aegis daemon in the background",
+	Run: func(cmd *cobra.Command, args []string) {
+		cfg, err := config.LoadGlobals()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		// Check if daemon is already running
+		if pid, err := readPID(cfg.AegisPIDFile); err == nil {
+			if isProcessRunning(pid) {
+				fmt.Printf("Aegis daemon is already running (pid %d)\n", pid)
+				return
+			}
+			// Stale PID file — clean it up
+			os.Remove(cfg.AegisPIDFile)
+		}
+
+		// Resolve the daemon binary (looks next to the CLI binary, then in PATH)
+		daemonBin, err := resolveDaemonBinary()
+		if err != nil {
+			log.Fatalf("Cannot find aegis-daemon binary: %v", err)
+		}
+
+		proc := exec.Command(daemonBin)
+		proc.Stdout = nil // detached
+		proc.Stderr = nil
+		proc.SysProcAttr = &syscall.SysProcAttr{Setsid: true} // new session → survives terminal close
+
+		if err := proc.Start(); err != nil {
+			log.Fatalf("Failed to start daemon: %v", err)
+		}
+
+		if err := writePID(cfg.AegisPIDFile, proc.Process.Pid); err != nil {
+			log.Printf("Warning: could not write PID file: %v", err)
+		}
+
+		fmt.Printf("Aegis daemon started (pid %d)\n", proc.Process.Pid)
+	},
+}
+
+var daemonShutdownCmd = &cobra.Command{
+	Use:   "shutdown",
+	Short: "Shutdown the running Aegis daemon",
+	Run: func(cmd *cobra.Command, args []string) {
+		cfg, err := config.LoadGlobals()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		pid, err := readPID(cfg.AegisPIDFile)
+		if err != nil {
+			// Fallback: try via socket
+			stopErr := sendCommand("DAEMON_SHUTDOWN", nil)
+			if stopErr != nil {
+				log.Fatalf("Daemon does not appear to be running: %v", stopErr)
+			}
+			return
+		}
+
+		proc, err := os.FindProcess(pid)
+		if err != nil || !isProcessRunning(pid) {
+			fmt.Println("Daemon is not running")
+			os.Remove(cfg.AegisPIDFile)
+			return
+		}
+
+		if err := proc.Signal(syscall.SIGTERM); err != nil {
+			log.Fatalf("Failed to shutdown daemon (pid %d): %v", pid, err)
+		}
+
+		os.Remove(cfg.AegisPIDFile)
+		fmt.Printf("Aegis daemon terminated (pid %d)\n", pid)
+	},
+}
+
+var daemonKillCmd = &cobra.Command{
+	Use:   "kill",
+	Short: "Kills the running Aegis daemon",
+	Run: func(cmd *cobra.Command, args []string) {
+		cfg, err := config.LoadGlobals()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		pid, err := readPID(cfg.AegisPIDFile)
+		if err != nil {
+			// Fallback: try via socket
+			stopErr := sendCommand("DAEMON_KILL", nil)
+			if stopErr != nil {
+				log.Fatalf("Daemon does not appear to be running: %v", stopErr)
+			}
+			return
+		}
+
+		proc, err := os.FindProcess(pid)
+		if err != nil || !isProcessRunning(pid) {
+			fmt.Println("Daemon is not running")
+			os.Remove(cfg.AegisPIDFile)
+			return
+		}
+
+		if err := proc.Signal(syscall.SIGTERM); err != nil {
+			log.Fatalf("Failed to kill daemon (pid %d): %v", pid, err)
+		}
+
+		os.Remove(cfg.AegisPIDFile)
+		fmt.Printf("Aegis daemon terminated (pid %d)\n", pid)
+	},
+}
+
+var daemonStatusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Show whether the Aegis daemon is running",
+	Run: func(cmd *cobra.Command, args []string) {
+		cfg, err := config.LoadGlobals()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		pid, err := readPID(cfg.AegisPIDFile)
+		if err != nil || !isProcessRunning(pid) {
+			fmt.Println("Aegis daemon: stopped")
+			return
+		}
+		fmt.Printf("Aegis daemon: running (pid %d)\n", pid)
+	},
 }
 
 /////////////////////////
@@ -287,7 +429,7 @@ func sendCommand(cmdType string, payload interface{}) error {
 		return err
 	}
 
-	var response map[string]interface{}
+	var response map[string]any
 	if err := json.NewDecoder(conn).Decode(&response); err == nil {
 		pretty, _ := json.MarshalIndent(response, "", "  ")
 		fmt.Println(string(pretty))
@@ -313,6 +455,12 @@ func init() {
 	rootCmd.AddCommand(sessionCmd)
 	rootCmd.AddCommand(componentCmd)
 	rootCmd.AddCommand(healthCmd)
+	rootCmd.AddCommand(daemonCmd)
+
+	daemonCmd.AddCommand(daemonStartCmd)
+	daemonCmd.AddCommand(daemonShutdownCmd)
+	daemonCmd.AddCommand(daemonStatusCmd)
+	daemonCmd.AddCommand(daemonKillCmd)
 
 	sessionCmd.AddCommand(sessionCreateCmd)
 	sessionCmd.AddCommand(sessionAttachCmd)

@@ -1,132 +1,169 @@
 package component
 
-// EnvelopeBuilder facilita la construcción de envelopes
-type EnvelopeBuilder struct {
-	envelope *Envelope
-}
+import (
+	"encoding/json"
+	"fmt"
+	"net"
+	"time"
 
-// NewBuilder crea un nuevo builder
-func NewBuilder(messageType MessageType, command CommandType, source, target string) *EnvelopeBuilder {
-	return &EnvelopeBuilder{
-		envelope: NewEnvelope(messageType, command, source, target, make(map[string]interface{})),
-	}
-}
+	"github.com/eichiarakaki/aegis/internals/logger"
+)
 
-// WithPayload establece el payload
-func (b *EnvelopeBuilder) WithPayload(payload map[string]interface{}) *EnvelopeBuilder {
-	b.envelope.Payload = payload
-	return b
-}
-
-// WithCorrelation establece el correlation_id
-func (b *EnvelopeBuilder) WithCorrelation(correlationID string) *EnvelopeBuilder {
-	b.envelope.CorrelationID = &correlationID
-	return b
-}
-
-// Build construye y valida el envelope
-func (b *EnvelopeBuilder) Build() (*Envelope, error) {
-	if err := b.envelope.Validate(); err != nil {
-		return nil, err
-	}
-	return b.envelope, nil
-}
-
-// Helpers para casos comunes
-
-// RegisterRequest construye un REGISTER
-func RegisterRequest(sessionToken, componentName, version string, caps ComponentCapabilities) (*Envelope, error) {
-	payload := map[string]interface{}{
-		"session_token":  sessionToken,
-		"component_name": componentName,
-		"version":        version,
-		"capabilities":   caps,
-	}
-
-	return NewBuilder(MessageTypeLifecycle, CommandRegister, "component", "aegis").
-		WithPayload(payload).
-		Build()
-}
-
-// RegisteredResponse constructs a REGISTERED
+// RegisteredResponse builds the LIFECYCLE/REGISTERED response sent after a
+// successful component registration.
 func RegisteredResponse(correlationID, componentID, sessionID string) (*Envelope, error) {
-	payload := map[string]any{
-		"component_id": componentID,
-		"session_id":   sessionID,
-		"state":        ComponentStateRegistered,
+	if componentID == "" || sessionID == "" {
+		return nil, fmt.Errorf("componentID and sessionID are required")
 	}
 
-	return NewBuilder(MessageTypeLifecycle, CommandRegistered, "aegis", "component").
-		WithCorrelation(correlationID).
-		WithPayload(payload).
-		Build()
+	env := NewEnvelope(
+		MessageTypeLifecycle,
+		CommandRegistered,
+		"aegis",
+		"component:"+componentID,
+		map[string]interface{}{
+			"component_id": componentID,
+			"session_id":   sessionID,
+			"state":        string(ComponentStateRegistered),
+		},
+	)
+	env.WithCorrelation(correlationID)
+	return env, nil
 }
 
-// StateUpdateRequest construye un STATE_UPDATE
-func StateUpdateRequest(state ComponentState) (*Envelope, error) {
-	payload := map[string]any{
-		"state": state,
+// ConfigureResponse builds a CONFIG/CONFIGURE envelope addressed to a specific component.
+func ConfigureResponse(componentID, streamSocketPath string, topics []string) (*Envelope, error) {
+	if streamSocketPath == "" {
+		return nil, fmt.Errorf("streamSocketPath is required")
+	}
+	if topics == nil {
+		topics = []string{}
 	}
 
-	return NewBuilder(MessageTypeLifecycle, CommandStateUpdate, "component", "aegis").
-		WithPayload(payload).
-		Build()
+	env := NewEnvelope(
+		MessageTypeConfig,
+		CommandConfigure,
+		"aegis",
+		"component:"+componentID,
+		map[string]interface{}{
+			"data_stream_socket": streamSocketPath,
+			"topics":             topics,
+		},
+	)
+	return env, nil
 }
 
-// ConfigureRequest construye un CONFIGURE
-func ConfigureRequest(dataStreamSocket string, topics []string) (*Envelope, error) {
-	payload := map[string]interface{}{
-		"data_stream_socket": dataStreamSocket,
-		"topics":             topics,
-	}
-
-	return NewBuilder(MessageTypeConfig, CommandConfigure, "aegis", "component").
-		WithPayload(payload).
-		Build()
-}
-
-// ACKResponse construye un ACK
+// ACKResponse builds a CONTROL/ACK envelope correlated to the given message.
 func ACKResponse(correlationID string) (*Envelope, error) {
-	payload := map[string]interface{}{
-		"status": "ok",
-	}
-
-	return NewBuilder(MessageTypeControl, CommandACK, "component", "aegis").
-		WithCorrelation(correlationID).
-		WithPayload(payload).
-		Build()
+	env := NewEnvelope(
+		MessageTypeControl,
+		CommandACK,
+		"aegis",
+		"component:unknown",
+		map[string]interface{}{
+			"status": "ok",
+		},
+	)
+	env.WithCorrelation(correlationID)
+	return env, nil
 }
 
-// PingRequest construye un PING
-func PingRequest() (*Envelope, error) {
-	return NewBuilder(MessageTypeHeartbeat, CommandPing, "aegis", "component").
-		WithPayload(make(map[string]interface{})).
-		Build()
+// PongResponse builds a HEARTBEAT/PONG envelope correlated to a PING.
+func PongResponse(correlationID string, state ComponentState, uptimeSeconds int64) (*Envelope, error) {
+	env := NewEnvelope(
+		MessageTypeHeartbeat,
+		CommandPong,
+		"aegis",
+		"component:unknown",
+		map[string]interface{}{
+			"state":          string(state),
+			"uptime_seconds": uptimeSeconds,
+		},
+	)
+	env.WithCorrelation(correlationID)
+	return env, nil
 }
 
-// PongResponse construye un PONG
-func PongResponse(correlationID string, state ComponentState, uptime int64) (*Envelope, error) {
-	payload := map[string]interface{}{
-		"state":          state,
-		"uptime_seconds": uptime,
-	}
-
-	return NewBuilder(MessageTypeHeartbeat, CommandPong, "component", "aegis").
-		WithCorrelation(correlationID).
-		WithPayload(payload).
-		Build()
-}
-
-// ErrorResponse construye un ERROR
+// ErrorResponse builds an ERROR envelope with the given code and message.
 func ErrorResponse(correlationID, code, message string, recoverable bool) (*Envelope, error) {
-	payload := map[string]interface{}{
-		"code":        code,
-		"message":     message,
-		"recoverable": recoverable,
+	env := NewEnvelope(
+		MessageTypeError,
+		CommandRuntimeError,
+		"aegis",
+		"component:unknown",
+		map[string]interface{}{
+			"code":        code,
+			"message":     message,
+			"recoverable": recoverable,
+		},
+	)
+	if correlationID != "" {
+		env.WithCorrelation(correlationID)
+	}
+	return env, nil
+}
+
+// waitForConfigACK blocks until the component sends a CONTROL/ACK correlated
+// to the CONFIGURE message that was just sent.
+func WaitForConfigACK(
+	conn net.Conn,
+	configureMessageID string,
+	log *logger.Logger,
+) error {
+	if err := conn.SetReadDeadline(time.Now().Add(15 * time.Second)); err != nil {
+		return err
+	}
+	defer conn.SetReadDeadline(time.Time{})
+
+	log.Debugf("Waiting for config ACK (correlating to message_id=%s)…", configureMessageID)
+
+	var envelope Envelope
+	if err := json.NewDecoder(conn).Decode(&envelope); err != nil {
+		return fmt.Errorf("failed to read ACK: %w", err)
 	}
 
-	return NewBuilder(MessageTypeError, CommandRuntimeError, "component", "aegis").
-		WithCorrelation(correlationID).
-		WithPayload(payload).
-		Build()
+	if err := envelope.Validate(); err != nil {
+		return fmt.Errorf("invalid ACK envelope: %w", err)
+	}
+
+	if envelope.Command != CommandACK {
+		return fmt.Errorf(
+			"expected ACK for CONFIGURE, got type=%s command=%s",
+			envelope.Type, envelope.Command,
+		)
+	}
+
+	if envelope.CorrelationID == nil || *envelope.CorrelationID != configureMessageID {
+		log.Warnf(
+			"ACK correlation mismatch: expected=%s got=%v",
+			configureMessageID, envelope.CorrelationID,
+		)
+	}
+
+	log.Debugf("Config ACK received")
+	return nil
+}
+
+// buildTopics derives the list of data-stream topic strings from the
+// component's declared capabilities.
+func BuildTopics(caps ComponentCapabilities) []string {
+	timeframedStreams := map[string]bool{
+		"klines": true,
+	}
+
+	var topics []string
+	for _, stream := range caps.RequiresStreams {
+		if timeframedStreams[stream] {
+			for _, symbol := range caps.SupportedSymbols {
+				for _, tf := range caps.SupportedTimeframes {
+					topics = append(topics, stream+"."+symbol+"."+tf)
+				}
+			}
+		} else {
+			for _, symbol := range caps.SupportedSymbols {
+				topics = append(topics, stream+"."+symbol)
+			}
+		}
+	}
+	return topics
 }
