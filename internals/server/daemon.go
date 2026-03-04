@@ -12,6 +12,7 @@ import (
 	"github.com/eichiarakaki/aegis/internals/logger"
 	"github.com/eichiarakaki/aegis/internals/services/component"
 	"github.com/eichiarakaki/aegis/internals/services/component/manager"
+	"github.com/nats-io/nats.go"
 )
 
 func InitDaemon() {
@@ -64,6 +65,14 @@ func InitDaemon() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
+	// Creating NATS
+	nc, err := nats.Connect(nats.DefaultURL)
+	if err != nil {
+		logger.Error(err)
+		return
+	}
+	defer nc.Close()
+
 	// Accept CLI connections
 	go func() {
 		for {
@@ -75,7 +84,7 @@ func InitDaemon() {
 				logger.Error("CLI connection error:", err)
 				continue
 			}
-			go HandleAegis(conn, sessionStore)
+			go HandleAegis(conn, sessionStore, nc)
 		}
 	}()
 

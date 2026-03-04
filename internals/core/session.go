@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/eichiarakaki/aegis/internals/core/component"
+	"github.com/eichiarakaki/aegis/internals/orchestrator"
 )
 
 type SessionStateType int
@@ -62,6 +63,8 @@ type Session struct {
 	// other component still owns them.
 	TopicOwners map[string][]string
 
+	Orchestrator *orchestrator.Orchestrator
+
 	mu sync.RWMutex
 }
 
@@ -76,6 +79,7 @@ func NewSession(id string, name string, mode string) *Session {
 		StreamSocket: nil,
 		Topics:       nil,
 		TopicOwners:  make(map[string][]string),
+		Orchestrator: nil,
 		CreatedAt:    time.Now(),
 	}
 }
@@ -236,6 +240,36 @@ func (s *Session) SetToStopped() error {
 
 	now := time.Now()
 	s.State = SessionStopped
+	s.StartedAt = &now
+	return nil
+}
+
+// SetToFinished transitions the session from SessionStopped to SessionFinished.
+func (s *Session) SetToFinished() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if !IsValidSessionStateTransition(s.State, SessionFinished) {
+		return errors.New("session cannot transition to stopped from current state")
+	}
+
+	now := time.Now()
+	s.State = SessionFinished
+	s.StartedAt = &now
+	return nil
+}
+
+// SetToError transitions the session from any to SessionError.
+func (s *Session) SetToError() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if !IsValidSessionStateTransition(s.State, SessionError) {
+		return errors.New("session cannot transition to stopped from current state")
+	}
+
+	now := time.Now()
+	s.State = SessionError
 	s.StartedAt = &now
 	return nil
 }

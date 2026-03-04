@@ -23,6 +23,8 @@
             delve         # Essential for professional debugging
             gotools       # Includes godoc, goimports, etc.
             gopls         # Go Language Server (for VS Code/Neovim)
+
+            nats-server
           ];
 
           # Productivity & Automation (DX)
