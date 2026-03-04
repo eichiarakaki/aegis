@@ -19,7 +19,7 @@ func GetSessionState(cmd core.Command, session *core.Session) (core.Response, er
 		Status:    "ok",
 		// ErrorCode: "",
 		// Message:   "",
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"session":    session,
 			"components": components,
 		},

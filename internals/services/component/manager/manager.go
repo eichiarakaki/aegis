@@ -1,12 +1,15 @@
-package component
+package manager
 
 import (
 	"encoding/json"
+	"fmt"
 	"net"
 	"time"
 
 	"github.com/eichiarakaki/aegis/internals/core"
 	"github.com/eichiarakaki/aegis/internals/core/component"
+	servicescomponent "github.com/eichiarakaki/aegis/internals/services/component"
+
 	"github.com/eichiarakaki/aegis/internals/logger"
 	"github.com/eichiarakaki/aegis/internals/services/sessions"
 	"github.com/google/uuid"
@@ -15,7 +18,7 @@ import (
 // HandleComponentConnection manages incoming connections from components.
 // It handles the registration handshake, associates the component with the
 // correct session registry, and manages the component lifecycle.
-func HandleComponentConnection(conn net.Conn, sessionStore *core.SessionStore, pool *ConnectionPool) {
+func HandleComponentConnection(conn net.Conn, sessionStore *core.SessionStore, pool *servicescomponent.ConnectionPool) {
 	defer func(conn net.Conn) {
 		if err := conn.Close(); err != nil {
 			return
@@ -139,7 +142,49 @@ func HandleComponentConnection(conn net.Conn, sessionStore *core.SessionStore, p
 	pool.Add(componentID, conn)
 	defer pool.Remove(componentID)
 
-	// STEP 5: Handle component lifecycle messages
+	// STEP 5: Wait for STATE_UPDATE(READY) from the component.
+	// The component signals it has finished its own initialization and is
+	// ready to receive configuration.
+	if err := WaitForReady(conn, registry, comp, logging); err != nil {
+		logging.Errorf("Component did not become READY: %s", err.Error())
+		registry.Unregister(componentID)
+		return
+	}
+
+	// STEP 6: Build and send CONFIGURE.
+	// Derive the data-stream socket path and topic list from the component's
+	// declared capabilities so each component only subscribes to what it needs.
+	streamSocketPath := fmt.Sprintf("/tmp/aegis-data-stream-%s.sock", session.ID)
+	topics := component.BuildTopics(registerPayload.Capabilities)
+
+	configureEnvelope, err := component.ConfigureResponse(componentID, streamSocketPath, topics)
+	if err != nil {
+		logging.Errorf("Failed to create CONFIGURE envelope: %s", err.Error())
+		sendErrorResponse(conn, "", "INTERNAL_ERROR", "Failed to build configuration", false)
+		registry.Unregister(componentID)
+		return
+	}
+
+	// Sending CONFIGURE
+	if err := json.NewEncoder(conn).Encode(configureEnvelope); err != nil {
+		logging.Errorf("Failed to send CONFIGURE: %s", err.Error())
+		registry.Unregister(componentID)
+		return
+	}
+
+	logging.Infof("Sent CONFIGURE — socket=%s topics=%v", streamSocketPath, topics)
+
+	// STEP 7: Wait for the component to ACK the configuration.
+	if err := WaitForConfigACK(conn, configureEnvelope.MessageID, logging); err != nil {
+		logging.Errorf("Component did not ACK configuration: %s", err.Error())
+		sendErrorResponse(conn, "", "CONFIG_ACK_TIMEOUT", "Component did not acknowledge configuration", false)
+		registry.Unregister(componentID)
+		return
+	}
+
+	logging.Infof("Configuration acknowledged by component — handing off to lifecycle loop")
+
+	// STEP 8: Enter the steady-state lifecycle loop (heartbeats, state updates, shutdown)
 	handleComponentLifecycle(conn, registry, comp, logging)
 }
 
@@ -271,7 +316,9 @@ func handleHeartbeatMessage(
 	}
 }
 
-// handleConfigMessage processes configuration messages.
+// handleConfigMessage processes configuration messages sent by the component.
+// In normal operation this should not be reached after the initial handshake,
+// but it is kept for completeness.
 func handleConfigMessage(
 	conn net.Conn,
 	registry *component.ComponentRegistry,
@@ -290,8 +337,6 @@ func handleConfigMessage(
 		}
 
 		logger.Infof("Received configuration: data_stream_socket=%s topics=%v", payload.DataStreamSocket, payload.Topics)
-
-		// TODO: Apply configuration to component
 
 		if err := registry.UpdateState(comp.ID, component.ComponentStateConfigured); err != nil {
 			logger.Errorf("Failed to update state to CONFIGURED: %s", err.Error())

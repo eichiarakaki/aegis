@@ -102,13 +102,13 @@ func (m *ComponentHeartbeatMonitor) handleDeadComponent(
 	}
 
 	// 2. Notify the parent session so it can stop gracefully
-	if session, exists := m.sessionStore.GetSessionByID(comp.SessionID); exists {
-		if err := session.SetToStop(); err != nil {
-			log.Warnf("Failed to stop parent session %s: %s", session.ID, err.Error())
-		} else {
-			log.Warnf("Parent session %s transitioned to STOPPED due to dead component", session.ID)
-		}
-	}
+	// if session, exists := m.sessionStore.GetSessionByID(comp.SessionID); exists {
+	// 	if err := session.SetToStopping(); err != nil {
+	// 		log.Warnf("Failed to stop parent session %s: %s", session.ID, err.Error())
+	// 	} else {
+	// 		log.Warnf("Parent session %s transitioned to STOPPED due to dead component", session.ID)
+	// 	}
+	// }
 
 	// 3. Close the active connection
 	if conn, exists := m.pool.Get(comp.ID); exists {

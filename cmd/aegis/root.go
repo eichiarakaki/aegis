@@ -429,7 +429,7 @@ func sendCommand(cmdType string, payload interface{}) error {
 		return err
 	}
 
-	var response map[string]interface{}
+	var response map[string]any
 	if err := json.NewDecoder(conn).Decode(&response); err == nil {
 		pretty, _ := json.MarshalIndent(response, "", "  ")
 		fmt.Println(string(pretty))

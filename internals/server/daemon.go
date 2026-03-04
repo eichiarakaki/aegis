@@ -10,7 +10,8 @@ import (
 	"github.com/eichiarakaki/aegis/internals/config"
 	"github.com/eichiarakaki/aegis/internals/core"
 	"github.com/eichiarakaki/aegis/internals/logger"
-	servicescomponent "github.com/eichiarakaki/aegis/internals/services/component"
+	"github.com/eichiarakaki/aegis/internals/services/component"
+	"github.com/eichiarakaki/aegis/internals/services/component/manager"
 )
 
 func InitDaemon() {
@@ -29,8 +30,8 @@ func InitDaemon() {
 	sessionStore := core.NewSessionStore()
 
 	// Connection pool and heartbeat monitor are shared across all component connections.
-	pool := servicescomponent.NewConnectionPool()
-	monitor := servicescomponent.NewComponentHeartbeatMonitor(sessionStore, pool)
+	pool := component.NewConnectionPool()
+	monitor := component.NewComponentHeartbeatMonitor(sessionStore, pool)
 	go monitor.Start()
 
 	// Clean up stale sockets from previous runs
@@ -91,7 +92,7 @@ func InitDaemon() {
 				logger.Error("Component connection error:", err)
 				continue
 			}
-			go servicescomponent.HandleComponentConnection(conn, sessionStore, pool)
+			go manager.HandleComponentConnection(conn, sessionStore, pool)
 		}
 	}()
 

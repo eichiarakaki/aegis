@@ -74,6 +74,8 @@ func LoadAegisFetcher() *AegisFetcherConfig {
 		aegis.Cryptocurrencies = []Cryptocurrency{}
 	}
 
+	logger.Debug(aegis.Cryptocurrencies)
+
 	return &AegisFetcherConfig{
 		SkipChecksumVerification: aegis.SkipChecksumVerification,
 		Extraction:               aegis.Extraction,

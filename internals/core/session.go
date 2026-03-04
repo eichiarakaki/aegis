@@ -24,21 +24,21 @@ const (
 func SessionStateToString(state SessionStateType) string {
 	switch state {
 	case SessionInitialized:
-		return "initialized"
+		return "INITIALIZED"
 	case SessionStarting:
-		return "starting"
+		return "STARTING"
 	case SessionRunning:
-		return "running"
+		return "RUNNING"
 	case SessionStopping:
-		return "stopping"
+		return "STOPPING"
 	case SessionStopped:
-		return "stopped"
+		return "STOOPED"
 	case SessionFinished:
-		return "finished"
+		return "FINISHED"
 	case SessionError:
-		return "error"
+		return "ERROR"
 	default:
-		return "unknown"
+		return "UNKNOW"
 	}
 }
 
@@ -94,8 +94,8 @@ func (s *Session) SetToRunning() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.State != SessionStarting && s.State != SessionStopped {
-		return errors.New("session cannot transition to running from current state")
+	if !IsValidSessionStateTransition(s.State, SessionRunning) {
+		return errors.New("session cannot transition to running from the current state")
 	}
 
 	now := time.Now()
@@ -109,7 +109,7 @@ func (s *Session) SetToStarting() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.State != SessionInitialized {
+	if !IsValidSessionStateTransition(s.State, SessionStarting) {
 		return errors.New("session cannot transition to starting from current state")
 	}
 
@@ -119,19 +119,33 @@ func (s *Session) SetToStarting() error {
 	return nil
 }
 
-// SetToStop transitions the session from SessionRunning to SessionStopped.
-// It records the stop time and calculates the uptime.
-func (s *Session) SetToStop() error {
+// SetToStopping transitions the session from SessionRunning to SessionStopping.
+func (s *Session) SetToStopping() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.State != SessionRunning && s.State != SessionStarting {
-		return errors.New("session is not running or starting")
+	if !IsValidSessionStateTransition(s.State, SessionStopping) {
+		return errors.New("session cannot transition to stopping from current state")
+	}
+
+	now := time.Now()
+	s.State = SessionStopping
+	s.StartedAt = &now
+	return nil
+}
+
+// SetToStopped transitions the session from SessionStopping to SessionStopped.
+func (s *Session) SetToStopped() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if !IsValidSessionStateTransition(s.State, SessionStopped) {
+		return errors.New("session cannot transition to stopped from current state")
 	}
 
 	now := time.Now()
 	s.State = SessionStopped
-	s.StoppedAt = &now
+	s.StartedAt = &now
 	return nil
 }
 
@@ -381,4 +395,40 @@ func (store *SessionStore) TotalComponentsByStateFromAllSessions(state component
 	}
 
 	return count
+}
+
+/*
+const (
+	SessionInitialized SessionStateType = iota
+	SessionStarting
+	SessionRunning
+	SessionStopping
+	SessionStopped
+	SessionFinished
+	SessionError
+)
+*/
+// IsValidSessionStateTransition validates if a state transition is allowed
+func IsValidSessionStateTransition(from, to SessionStateType) bool {
+	validTransitions := map[SessionStateType][]SessionStateType{
+		SessionInitialized: {SessionStarting, SessionError},
+		SessionStarting:    {SessionRunning, SessionError},
+		SessionRunning:     {SessionStopping, SessionError},
+		SessionStopping:    {SessionStopped, SessionError},
+		SessionStopped:     {SessionFinished, SessionStarting, SessionError},
+		SessionFinished:    {}, // just drop the session, idk
+	}
+
+	allowed, exists := validTransitions[from]
+	if !exists {
+		return false
+	}
+
+	for _, state := range allowed {
+		if state == to {
+			return true
+		}
+	}
+
+	return false
 }

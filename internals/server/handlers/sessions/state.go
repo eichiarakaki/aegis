@@ -68,14 +68,14 @@ func HandleSessionStart(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 	previousState := session.State
 
 	// Start session
-	if err := servicessessions.StartSession(session, sessionStore); err != nil {
+	if err := servicessessions.StartSession(session, cmd, conn); err != nil {
 		logger.WithRequestID(cmd.RequestID).Errorf("Failed to start session: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
 			Command:   "SESSION_START",
 			Status:    "error",
 			Message:   fmt.Sprintf("Failed to start session: %s", err.Error()),
-			Data: map[string]interface{}{
+			Data: map[string]any{
 				"session_id":     session.ID,
 				"previous_state": core.SessionStateToString(previousState),
 				"current_state":  core.SessionStateToString(core.SessionError),
@@ -91,7 +91,7 @@ func HandleSessionStart(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 		Command:   "SESSION_START",
 		Status:    "ok",
 		Message:   fmt.Sprintf("Session started successfully: %s", utils.GetShortHash(session.ID)),
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"session_id":     session.ID,
 			"previous_state": core.SessionStateToString(previousState),
 			"current_state":  core.SessionStateToString(session.State),
@@ -165,7 +165,7 @@ func HandleSessionStop(cmd core.Command, conn net.Conn, sessionStore *core.Sessi
 			Command:   "SESSION_STOP",
 			Status:    "error",
 			Message:   fmt.Sprintf("Failed to stop session: %s", err.Error()),
-			Data: map[string]interface{}{
+			Data: map[string]any{
 				"session_id": session.ID,
 			},
 		})
@@ -179,7 +179,7 @@ func HandleSessionStop(cmd core.Command, conn net.Conn, sessionStore *core.Sessi
 		Command:   "SESSION_STOP",
 		Status:    "ok",
 		Message:   fmt.Sprintf("Session stopped successfully: %s", utils.GetShortHash(session.ID)),
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"session_id":     session.ID,
 			"previous_state": core.SessionStateToString(previousState),
 			"current_state":  core.SessionStateToString(session.State),

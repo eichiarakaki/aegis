@@ -37,6 +37,7 @@ func HandleAegis(conn net.Conn, sessionStore *core.SessionStore) {
 
 	case "DAEMON_SHUTDOWN":
 		handlers.HandleDaemonShutdown(cmd, conn, sessionStore)
+
 	case "DAEMON_KILL":
 		handlers.HandleDaemonKill(cmd.RequestID, conn)
 
