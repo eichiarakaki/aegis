@@ -14,9 +14,10 @@ import (
 	"github.com/eichiarakaki/aegis/internals/server/handlers"
 	"github.com/eichiarakaki/aegis/internals/server/handlers/component"
 	"github.com/eichiarakaki/aegis/internals/server/handlers/sessions"
+	"github.com/nats-io/nats.go"
 )
 
-func HandleAegis(conn net.Conn, sessionStore *core.SessionStore) {
+func HandleAegis(conn net.Conn, sessionStore *core.SessionStore, nc *nats.Conn) {
 	defer func(conn net.Conn) {
 		err := conn.Close()
 		if err != nil {
@@ -46,14 +47,11 @@ func HandleAegis(conn net.Conn, sessionStore *core.SessionStore) {
 	case "SESSION_CREATE":
 		sessions.HandleSessionCreate(cmd, conn, sessionStore)
 
-	// case "SESSION_CREATE_RUN":
-	// sessions.HandleSessionCreateRun(cmd, conn, sessionStore)
-
 	case "SESSION_ATTACH":
 		sessions.HandleSessionAttach(cmd, conn, sessionStore)
 
 	case "SESSION_START":
-		sessions.HandleSessionStart(cmd, conn, sessionStore)
+		sessions.HandleSessionStart(cmd, conn, sessionStore, nc)
 
 	case "SESSION_STOP":
 		sessions.HandleSessionStop(cmd, conn, sessionStore)
@@ -77,6 +75,7 @@ func HandleAegis(conn net.Conn, sessionStore *core.SessionStore) {
 
 	case "COMPONENT_DESCRIBE":
 		component.HandleComponentDescribe(cmd, conn, sessionStore)
+
 	// -- Health ----------------------------------------------------
 
 	case "HEALTH_CHECK":

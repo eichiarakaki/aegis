@@ -9,10 +9,11 @@ import (
 	"github.com/eichiarakaki/aegis/internals/logger"
 	servicessessions "github.com/eichiarakaki/aegis/internals/services/sessions"
 	"github.com/eichiarakaki/aegis/internals/services/sessions/utils"
+	"github.com/nats-io/nats.go"
 )
 
 // HandleSessionStart starts an existing session.
-func HandleSessionStart(cmd core.Command, conn net.Conn, sessionStore *core.SessionStore) {
+func HandleSessionStart(cmd core.Command, conn net.Conn, sessionStore *core.SessionStore, nc *nats.Conn) {
 	// Deserialize payload
 	var payload core.SessionActionPayload
 	payloadBytes, err := json.Marshal(cmd.Payload)
@@ -68,7 +69,7 @@ func HandleSessionStart(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 	previousState := session.State
 
 	// Start session
-	if err := servicessessions.StartSession(session, cmd, conn); err != nil {
+	if err := servicessessions.StartSession(session, cmd, conn, nc); err != nil {
 		logger.WithRequestID(cmd.RequestID).Errorf("Failed to start session: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,

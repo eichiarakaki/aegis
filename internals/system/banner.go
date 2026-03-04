@@ -6,7 +6,7 @@ import (
 
 func Print() {
 	logger.Info("=========================================================")
-	logger.Info("Aegis Daemon - Institutional-grade process orchestration daemon for algorithmic trading.")
+	logger.Info("Aegis Daemon - Institutional-grade event-driven process orchestration daemon for algorithmic trading.")
 	logger.Info("Version: 0.1.0")
 	logger.Info("Author: Eichi Arakaki")
 	logger.Info("License: GNU GENERAL PUBLIC LICENSE")
