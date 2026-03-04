@@ -1,5 +1,14 @@
-Aegis is a high-performance, event-driven process orchestration daemon built for algorithmic trading systems operating at institutional grade. It manages the full lifecycle of isolated trading components — strategy engines, risk managers, portfolio managers, data pipelines, and execution layers — coordinating them through a structured binary protocol over Unix domain sockets.
-At its core, Aegis runs as a background daemon (aegisd) that maintains named sessions, each representing an isolated trading context. Components written in any language register themselves into a session at startup, declare their capabilities, and receive configuration automatically. The daemon tracks every state transition — from REGISTERED through INITIALIZING, READY, CONFIGURED, RUNNING, and SHUTDOWN — enforcing a strict protocol so no component can operate outside its declared lifecycle.
-Data distribution is handled by an event-driven orchestrator built on NATS, which fans market data out to subscribed components through dedicated Unix socket streams. Each component only receives the symbols, timeframes, and stream types it explicitly declared during registration — orderbook ticks, kline data, trade feeds — keeping components fully decoupled from one another and from the data source itself. A strategy engine never needs to know a risk manager exists; both simply subscribe to what they need.
+Aegis is a high-performance, event-driven process orchestration daemon built for algorithmic trading systems operating at institutional grade. 
+It manages the full lifecycle of isolated trading components — strategy engines, risk managers, portfolio managers, data pipelines, and execution layers — coordinating them through a structured binary protocol over Unix domain sockets.
+
+At its core, Aegis runs as a background daemon (aegisd) that maintains named sessions, each representing an isolated trading context. 
+Components written in any language register themselves into a session at startup, declare their capabilities, and receive configuration automatically. 
+The daemon tracks every state transition — from REGISTERED through INITIALIZING, READY, CONFIGURED, RUNNING, and SHUTDOWN — enforcing a strict protocol so no component can operate outside its declared lifecycle.
+
+Data distribution is handled by an event-driven orchestrator built on NATS, which fans market data out to subscribed components through dedicated Unix socket streams.
+Each component only receives the symbols, timeframes, and stream types it explicitly declared during registration — orderbook ticks, kline data, trade feeds — keeping components fully decoupled from one another and from the data source itself. 
+A strategy engine never needs to know a risk manager exists; both simply subscribe to what they need.
+
 The CLI (aegis) provides full operator control: create and name sessions, attach component binaries with dynamic environment injection, start and stop sessions, inspect component state, and query live health — all without touching a config file.
+
 Aegis is designed to compete at the level of small hedge funds, where microsecond-grade isolation between components, deterministic state management, and crash-resilient reconnection are not optional.
