@@ -30,14 +30,16 @@ func ListSessions(sessionStore *core.SessionStore) map[string]any {
 		}
 
 		result[session.ID] = map[string]any{
-			"id":         session.ID,
-			"name":       session.Name,
-			"mode":       session.Mode,
-			"state":      core.SessionStateToString(session.GetState()),
-			"components": componentList,
-			"created_at": session.CreatedAt,
-			"started_at": session.StartedAt,
-			"stopped_at": session.StoppedAt,
+			"id":            session.ID,
+			"name":          session.Name,
+			"stream_socket": session.GetStreamSocketPath(),
+			"topics":        session.Topics,
+			"mode":          session.Mode,
+			"state":         core.SessionStateToString(session.GetState()),
+			"components":    componentList,
+			"created_at":    session.CreatedAt,
+			"started_at":    session.StartedAt,
+			"stopped_at":    session.StoppedAt,
 		}
 	}
 	return result

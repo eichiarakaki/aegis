@@ -53,19 +53,102 @@ type Session struct {
 	StartedAt *time.Time
 	StoppedAt *time.Time
 
+	StreamSocket *string
+	Topics       *[]string
+
+	// TopicOwners tracks which components declared each topic.
+	// topic -> []componentID
+	// When a component unregisters, its topics are removed only if no
+	// other component still owns them.
+	TopicOwners map[string][]string
+
 	mu sync.RWMutex
 }
 
 // NewSession creates a new session with the given name and mode.
 func NewSession(id string, name string, mode string) *Session {
 	return &Session{
-		ID:        id,
-		Name:      name,
-		Mode:      mode,
-		State:     SessionInitialized,
-		Registry:  component.NewComponentRegistry(),
-		CreatedAt: time.Now(),
+		ID:           id,
+		Name:         name,
+		Mode:         mode,
+		State:        SessionInitialized,
+		Registry:     component.NewComponentRegistry(),
+		StreamSocket: nil,
+		Topics:       nil,
+		TopicOwners:  make(map[string][]string),
+		CreatedAt:    time.Now(),
 	}
+}
+
+// AddTopics merges newTopics into the session topic list and records componentID
+// as an owner of each topic. Topics already present are not duplicated.
+func (s *Session) AddTopics(componentID string, newTopics []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.TopicOwners == nil {
+		s.TopicOwners = make(map[string][]string)
+	}
+
+	// Build a set of existing topics for O(1) lookup.
+	existing := make(map[string]struct{})
+	if s.Topics != nil {
+		for _, t := range *s.Topics {
+			existing[t] = struct{}{}
+		}
+	}
+
+	for _, t := range newTopics {
+		// Register the owner regardless — the component may reconnect.
+		s.TopicOwners[t] = appendUnique(s.TopicOwners[t], componentID)
+
+		// Only append to the flat list if not already there.
+		if _, ok := existing[t]; !ok {
+			existing[t] = struct{}{}
+			if s.Topics == nil {
+				topics := []string{t}
+				s.Topics = &topics
+			} else {
+				*s.Topics = append(*s.Topics, t)
+			}
+		}
+	}
+}
+
+// RemoveComponentTopics removes componentID as an owner of its topics.
+// A topic is removed from the session only when it has no remaining owners.
+func (s *Session) RemoveComponentTopics(componentID string, componentTopics []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.TopicOwners == nil || s.Topics == nil {
+		return
+	}
+
+	// Determine which topics become orphaned after removing this owner.
+	orphaned := make(map[string]struct{})
+	for _, t := range componentTopics {
+		owners := removeValue(s.TopicOwners[t], componentID)
+		if len(owners) == 0 {
+			delete(s.TopicOwners, t)
+			orphaned[t] = struct{}{}
+		} else {
+			s.TopicOwners[t] = owners
+		}
+	}
+
+	if len(orphaned) == 0 {
+		return
+	}
+
+	// Rebuild the flat topic list without orphaned topics.
+	filtered := (*s.Topics)[:0]
+	for _, t := range *s.Topics {
+		if _, drop := orphaned[t]; !drop {
+			filtered = append(filtered, t)
+		}
+	}
+	*s.Topics = filtered
 }
 
 // GetUptimeSeconds calculates and returns the uptime in seconds.
@@ -75,17 +158,14 @@ func (s *Session) GetUptimeSeconds() int64 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Session hasn't started yet
 	if s.StartedAt == nil {
 		return 0
 	}
 
-	// Session is running or in an intermediate state
 	if s.StoppedAt == nil {
 		return int64(time.Since(*s.StartedAt).Seconds())
 	}
 
-	// Session has stopped, calculate duration between start and stop
 	return int64(s.StoppedAt.Sub(*s.StartedAt).Seconds())
 }
 
@@ -102,6 +182,17 @@ func (s *Session) SetToRunning() error {
 	s.State = SessionRunning
 	s.StartedAt = &now
 	return nil
+}
+
+// GetStreamSocketPath just returns the StreamSocket.
+func (s *Session) GetStreamSocketPath() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.StreamSocket != nil {
+		return *s.StreamSocket
+	}
+	return ""
 }
 
 // SetToStarting transitions the session from SessionInitialized to SessionStarting.
@@ -150,7 +241,6 @@ func (s *Session) SetToStopped() error {
 }
 
 // AddComponent adds a component to the session.
-// Returns an error if the session is finished or if the component already exists.
 func (s *Session) AddComponent(c *component.Component) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -173,7 +263,29 @@ func (s *Session) GetState() SessionStateType {
 	return s.State
 }
 
-// SessionStore manages all active sessions in memory.
+// ---------- helpers ----------
+
+func appendUnique(slice []string, value string) []string {
+	for _, v := range slice {
+		if v == value {
+			return slice
+		}
+	}
+	return append(slice, value)
+}
+
+func removeValue(slice []string, value string) []string {
+	out := slice[:0]
+	for _, v := range slice {
+		if v != value {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// ---------- SessionStore ----------
+
 type SessionStore struct {
 	sessions map[string]*Session
 	mu       sync.RWMutex
@@ -228,7 +340,6 @@ func (store *SessionStore) GetSessionsByName(name string) ([]*Session, int) {
 	if len(sessions) >= 1 {
 		return sessions, count
 	}
-
 	return nil, 0
 }
 
@@ -267,14 +378,6 @@ func (store *SessionStore) IsTokenInSessionStore(token string) bool {
 	return false
 }
 
-// GetSessionByIDApproximation retrieves a session by its full ID or by a dynamic approximation.
-// The approximation uses progressively longer prefixes of the session ID.
-// Examples:
-//   - "abc" matches "abcdef123..." if it's unique
-//   - If multiple sessions start with "abc", it returns nil (ambiguous)
-//   - Full ID always takes priority
-//
-// Returns the session and a boolean indicating if it was found.
 func (store *SessionStore) GetSessionByIDApproximation(approximation string) (*Session, bool) {
 	if approximation == "" {
 		return nil, false
@@ -283,15 +386,12 @@ func (store *SessionStore) GetSessionByIDApproximation(approximation string) (*S
 	store.mu.RLock()
 	defer store.mu.RUnlock()
 
-	// First, try exact match (full ID)
 	for _, session := range store.sessions {
 		if session.ID == approximation {
 			return session, true
 		}
 	}
 
-	// Then, try dynamic prefix matching
-	// Start from approximation length and go up to the max ID length
 	maxIDLength := 0
 	for _, session := range store.sessions {
 		if len(session.ID) > maxIDLength {
@@ -299,10 +399,9 @@ func (store *SessionStore) GetSessionByIDApproximation(approximation string) (*S
 		}
 	}
 
-	// Try progressively longer prefixes
 	for prefixLen := len(approximation); prefixLen <= maxIDLength; prefixLen++ {
 		if prefixLen > len(approximation) {
-			break // Don't search beyond the approximation length on first pass
+			break
 		}
 
 		matches := 0
@@ -313,17 +412,15 @@ func (store *SessionStore) GetSessionByIDApproximation(approximation string) (*S
 				matches++
 				matchedSession = session
 				if matches > 1 {
-					break // Ambiguous: multiple matches
+					break
 				}
 			}
 		}
 
-		// If exactly one match at this prefix length, return it
 		if matches == 1 {
 			return matchedSession, true
 		}
 
-		// If multiple matches, stop searching (ambiguous)
 		if matches > 1 {
 			return nil, false
 		}
@@ -357,7 +454,6 @@ func (store *SessionStore) Count() int {
 func (store *SessionStore) CountByState(state SessionStateType) int {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
-
 	count := 0
 	for _, session := range store.sessions {
 		if session.State == state {
@@ -370,7 +466,6 @@ func (store *SessionStore) CountByState(state SessionStateType) int {
 func (store *SessionStore) TotalComponents() int {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
-
 	count := 0
 	for _, session := range store.sessions {
 		if session.Registry == nil {
@@ -378,14 +473,12 @@ func (store *SessionStore) TotalComponents() int {
 		}
 		count += len(session.Registry.List())
 	}
-
 	return count
 }
 
 func (store *SessionStore) TotalComponentsByStateFromAllSessions(state component.ComponentState) int {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
-
 	count := 0
 	for _, session := range store.sessions {
 		if session.Registry == nil {
@@ -393,30 +486,17 @@ func (store *SessionStore) TotalComponentsByStateFromAllSessions(state component
 		}
 		count += len(session.Registry.GetByState(state))
 	}
-
 	return count
 }
 
-/*
-const (
-	SessionInitialized SessionStateType = iota
-	SessionStarting
-	SessionRunning
-	SessionStopping
-	SessionStopped
-	SessionFinished
-	SessionError
-)
-*/
-// IsValidSessionStateTransition validates if a state transition is allowed
 func IsValidSessionStateTransition(from, to SessionStateType) bool {
 	validTransitions := map[SessionStateType][]SessionStateType{
-		SessionInitialized: {SessionStarting, SessionError},
+		SessionInitialized: {SessionStarting, SessionStopping, SessionError},
 		SessionStarting:    {SessionRunning, SessionError},
 		SessionRunning:     {SessionStopping, SessionError},
 		SessionStopping:    {SessionStopped, SessionError},
 		SessionStopped:     {SessionFinished, SessionStarting, SessionError},
-		SessionFinished:    {}, // just drop the session, idk
+		SessionFinished:    {},
 	}
 
 	allowed, exists := validTransitions[from]
