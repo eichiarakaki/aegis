@@ -83,7 +83,7 @@ func (r *ComponentRegistry) GetByName(sessionID, componentName string) (*Compone
 	return nil, false
 }
 
-// UpdateState actualiza el estado del componente
+// UpdateState updates the component's state
 func (r *ComponentRegistry) UpdateState(componentID string, state ComponentState) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -93,7 +93,7 @@ func (r *ComponentRegistry) UpdateState(componentID string, state ComponentState
 		return NewValidationError("NOT_FOUND", "component not found")
 	}
 
-	// Validar transición de estado
+	// validates the transition
 	if !isValidStateTransition(comp.State, state) {
 		return NewValidationError("INVALID_STATE_TRANSITION", "invalid state transition")
 	}
@@ -131,7 +131,7 @@ func (r *ComponentRegistry) UpdateHeartbeat(componentID string) error {
 	return nil
 }
 
-// Unregister elimina un componente
+// Unregister removes a component
 func (r *ComponentRegistry) Unregister(componentID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

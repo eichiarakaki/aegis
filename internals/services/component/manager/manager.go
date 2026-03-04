@@ -155,9 +155,13 @@ func HandleComponentConnection(conn net.Conn, sessionStore *core.SessionStore, p
 	// Derive the data-stream socket path and topic list from the component's
 	// declared capabilities so each component only subscribes to what it needs.
 	streamSocketPath := fmt.Sprintf("/tmp/aegis-data-stream-%s.sock", session.ID)
-	topics := component.BuildTopics(registerPayload.Capabilities)
+	newTopics := component.BuildTopics(registerPayload.Capabilities)
 
-	configureEnvelope, err := component.ConfigureResponse(componentID, streamSocketPath, topics)
+	session.StreamSocket = &streamSocketPath
+	session.AddTopics(componentID, newTopics)
+	defer session.RemoveComponentTopics(componentID, newTopics)
+
+	configureEnvelope, err := component.ConfigureResponse(componentID, streamSocketPath, newTopics)
 	if err != nil {
 		logging.Errorf("Failed to create CONFIGURE envelope: %s", err.Error())
 		sendErrorResponse(conn, "", "INTERNAL_ERROR", "Failed to build configuration", false)
@@ -172,7 +176,7 @@ func HandleComponentConnection(conn net.Conn, sessionStore *core.SessionStore, p
 		return
 	}
 
-	logging.Infof("Sent CONFIGURE — socket=%s topics=%v", streamSocketPath, topics)
+	logging.Infof("Sent CONFIGURE — socket=%s topics=%v", streamSocketPath, newTopics)
 
 	// STEP 7: Wait for the component to ACK the configuration.
 	if err := WaitForConfigACK(conn, configureEnvelope.MessageID, logging); err != nil {
