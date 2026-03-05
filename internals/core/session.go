@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/eichiarakaki/aegis/internals/core/component"
-	"github.com/eichiarakaki/aegis/internals/orchestrator"
 )
 
 type SessionStateType int
@@ -65,9 +64,6 @@ type Session struct {
 
 	ComponentPaths []string
 
-	Orchestrator *orchestrator.Orchestrator
-	DataStream   *orchestrator.DataStreamServer
-
 	mu sync.RWMutex
 }
 
@@ -84,8 +80,6 @@ func NewSession(id string, name string, mode string) *Session {
 		TopicOwners:    make(map[string][]string),
 		ComponentPaths: nil,
 		CreatedAt:      time.Now(),
-		Orchestrator:   nil,
-		DataStream:     nil,
 	}
 }
 
