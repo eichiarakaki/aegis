@@ -122,7 +122,7 @@ func HandleComponentConnection(conn net.Conn, sessionStore *core.SessionStore, p
 	logging.Debugf("Requires streams: %v", registerPayload.Capabilities.RequiresStreams)
 
 	// STEP 4: Send REGISTERED response
-	registeredEnvelope, err := component.RegisteredResponse(
+	registeredEnvelope, err := RegisteredResponse(
 		registerEnvelope.MessageID,
 		componentID,
 		session.ID,
@@ -155,13 +155,13 @@ func HandleComponentConnection(conn net.Conn, sessionStore *core.SessionStore, p
 	// Derive the data-stream socket path and topic list from the component's
 	// declared capabilities so each component only subscribes to what it needs.
 	streamSocketPath := fmt.Sprintf("/tmp/aegis-data-stream-%s.sock", session.ID)
-	newTopics := component.BuildTopics(registerPayload.Capabilities)
+	newTopics := BuildTopics(registerPayload.Capabilities)
 
 	session.StreamSocket = &streamSocketPath
 	session.AddTopics(componentID, newTopics)
 	defer session.RemoveComponentTopics(componentID, newTopics)
 
-	configureEnvelope, err := component.ConfigureResponse(componentID, streamSocketPath, newTopics)
+	configureEnvelope, err := ConfigureResponse(componentID, streamSocketPath, newTopics)
 	if err != nil {
 		logging.Errorf("Failed to create CONFIGURE envelope: %s", err.Error())
 		sendErrorResponse(conn, "", "INTERNAL_ERROR", "Failed to build configuration", false)
@@ -268,7 +268,7 @@ func handleLifecycleMessage(
 
 		logger.Infof("Component state updated to: %s", payload.State)
 
-		ackEnvelope, _ := component.ACKResponse(envelope.MessageID)
+		ackEnvelope, _ := ACKResponse(envelope.MessageID)
 		if err := json.NewEncoder(conn).Encode(ackEnvelope); err != nil {
 			return
 		}
@@ -276,7 +276,7 @@ func handleLifecycleMessage(
 	case component.CommandShutdown:
 		logger.Infof("Component initiated shutdown")
 
-		ackEnvelope, _ := component.ACKResponse(envelope.MessageID)
+		ackEnvelope, _ := ACKResponse(envelope.MessageID)
 		if err := json.NewEncoder(conn).Encode(ackEnvelope); err != nil {
 			return
 		}
@@ -302,7 +302,7 @@ func handleHeartbeatMessage(
 	switch envelope.Command {
 	case component.CommandPing:
 		uptimeSeconds := int64(time.Since(comp.StartedAt).Seconds())
-		pongEnvelope, _ := component.PongResponse(envelope.MessageID, comp.State, uptimeSeconds)
+		pongEnvelope, _ := PongResponse(envelope.MessageID, comp.State, uptimeSeconds)
 		if err := json.NewEncoder(conn).Encode(pongEnvelope); err != nil {
 			return
 		}
@@ -348,7 +348,7 @@ func handleConfigMessage(
 			return
 		}
 
-		ackEnvelope, _ := component.ACKResponse(envelope.MessageID)
+		ackEnvelope, _ := ACKResponse(envelope.MessageID)
 		if err := json.NewEncoder(conn).Encode(ackEnvelope); err != nil {
 			return
 		}
@@ -368,7 +368,7 @@ func sendErrorResponse(
 	message string,
 	recoverable bool,
 ) {
-	errorEnvelope, err := component.ErrorResponse(correlationID, code, message, recoverable)
+	errorEnvelope, err := ErrorResponse(correlationID, code, message, recoverable)
 	if err != nil {
 		logger.Errorf("Failed to create error response: %s", err.Error())
 		return

@@ -212,3 +212,46 @@ func WaitForReady(
 
 	return nil
 }
+
+// ErrorResponse builds an ERROR envelope with the given code and message.
+func ErrorResponse(correlationID, code, message string, recoverable bool) (*component.Envelope, error) {
+	env := component.NewEnvelope(
+		component.MessageTypeError,
+		component.CommandRuntimeError,
+		"aegis",
+		"component:unknown",
+		map[string]any{
+			"code":        code,
+			"message":     message,
+			"recoverable": recoverable,
+		},
+	)
+	if correlationID != "" {
+		env.WithCorrelation(correlationID)
+	}
+	return env, nil
+}
+
+// buildTopics derives the list of data-stream topic strings from the
+// component's declared capabilities.
+func BuildTopics(caps component.ComponentCapabilities) []string {
+	timeframedStreams := map[string]bool{
+		"klines": true,
+	}
+
+	var topics []string
+	for _, stream := range caps.RequiresStreams {
+		if timeframedStreams[stream] {
+			for _, symbol := range caps.SupportedSymbols {
+				for _, tf := range caps.SupportedTimeframes {
+					topics = append(topics, stream+"."+symbol+"."+tf)
+				}
+			}
+		} else {
+			for _, symbol := range caps.SupportedSymbols {
+				topics = append(topics, stream+"."+symbol)
+			}
+		}
+	}
+	return topics
+}
