@@ -8,7 +8,7 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
-// Envelope is the NATS message wrapper published for every row.
+// Envelope is the message wrapper published for every row.
 type Envelope struct {
 	SessionID string          `json:"session_id"`
 	Topic     string          `json:"topic"`
@@ -16,22 +16,26 @@ type Envelope struct {
 	Data      json.RawMessage `json:"data"`
 }
 
-// Publisher wraps a NATS connection and publishes Envelopes.
+// Publisher routes rows either to a DataStreamServer (historical mode with
+// backpressure) or directly to NATS (realtime mode).
 type Publisher struct {
 	nc  *nats.Conn
+	ds  *DataStreamServer // nil in realtime-only mode
 	log *logger.Logger
 }
 
-// NewPublisher creates a Publisher from an existing NATS connection.
-func NewPublisher(nc *nats.Conn) *Publisher {
+// NewPublisher creates a Publisher.
+// If ds is non-nil, Publish delivers to it synchronously (backpressure).
+// If ds is nil, Publish falls back to raw NATS publish (realtime).
+func NewPublisher(nc *nats.Conn, ds *DataStreamServer) *Publisher {
 	return &Publisher{
 		nc:  nc,
+		ds:  ds,
 		log: logger.WithComponent("Publisher"),
 	}
 }
 
-// Publish builds an Envelope from a RawRow and publishes it to NATS.
-// On first failure it retries once; on second failure it returns the error.
+// Publish builds an Envelope from a RawRow and delivers it.
 func (p *Publisher) Publish(sessionID string, row RawRow) error {
 	env := Envelope{
 		SessionID: sessionID,
@@ -45,10 +49,16 @@ func (p *Publisher) Publish(sessionID string, row RawRow) error {
 		return fmt.Errorf("publisher: marshal envelope: %w", err)
 	}
 
-	p.log.Debugf("→ %s ts=%d bytes=%d", row.Topic, row.Timestamp, len(data))
+	// p.log.Debugf("→ %s ts=%d bytes=%d", row.Topic, row.Timestamp, len(data))
 
+	if p.ds != nil {
+		// Historical mode: block until every interested component receives it.
+		p.ds.Deliver(row.Topic, data)
+		return nil
+	}
+
+	// Realtime mode: publish to NATS, retry once on failure.
 	if err := p.nc.Publish(row.Topic, data); err != nil {
-		// Retry once.
 		if err2 := p.nc.Publish(row.Topic, data); err2 != nil {
 			return fmt.Errorf("publisher: publish to %q (retry): %w", row.Topic, err2)
 		}

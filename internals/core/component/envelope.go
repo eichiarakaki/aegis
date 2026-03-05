@@ -3,7 +3,7 @@ package component
 import (
 	"time"
 
-	"github.com/eichiarakaki/aegis/internals/services/sessions/utils"
+	"github.com/eichiarakaki/aegis/internals/services/utils"
 )
 
 /* STANDARD ENVELOPE
@@ -94,6 +94,7 @@ type Envelope struct {
 type RegisterPayload struct {
 	SessionToken  string                `json:"session_token"`
 	ComponentName string                `json:"component_name"`
+	ComponentID   string                `json:"component_id,omitempty"`
 	Version       string                `json:"version"`
 	Capabilities  ComponentCapabilities `json:"capabilities"`
 }

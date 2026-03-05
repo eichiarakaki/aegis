@@ -5,19 +5,16 @@ import (
 
 	"github.com/eichiarakaki/aegis/internals/core"
 	"github.com/eichiarakaki/aegis/internals/logger"
-	"github.com/eichiarakaki/aegis/internals/services/sessions/utils"
+	"github.com/eichiarakaki/aegis/internals/services/utils"
 )
 
 func CreateSession(name string, mode string, sessionStore *core.SessionStore) (string, error) {
-	newId, err := utils.GenerateUUID()
-	if err != nil {
-		return "", fmt.Errorf("couldn't create a new session: %s", err)
-	}
+	newId := utils.GenerateSessionID()
 
 	logger.Debug("Creating session with ID:", newId)
 
 	s := core.NewSession(newId, name, mode)
-	err = sessionStore.AddSession(s)
+	err := sessionStore.AddSession(s)
 	if err != nil {
 		return "", fmt.Errorf("couldn't add a new session to the storage: %s", err)
 	}

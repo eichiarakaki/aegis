@@ -14,7 +14,6 @@ type Component struct {
 	State        ComponentState
 	Capabilities ComponentCapabilities
 
-	// Control
 	StartedAt     time.Time
 	LastHeartbeat time.Time
 	mu            sync.RWMutex
