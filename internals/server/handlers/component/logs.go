@@ -116,7 +116,7 @@ func HandleComponentLogs(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "COMPONENT_LOGS",
+			Command:   string(core.CommandComponentLogs),
 			Status:    "error",
 			ErrorCode: "INVALID_PAYLOAD",
 			Message:   "failed to decode payload",
@@ -131,7 +131,7 @@ func HandleComponentLogs(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 	if !ok {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "COMPONENT_LOGS",
+			Command:   string(core.CommandComponentLogs),
 			Status:    "error",
 			ErrorCode: "SESSION_NOT_FOUND",
 			Message:   "session not found: " + payload.SessionID,
@@ -147,7 +147,7 @@ func HandleComponentLogs(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 	if !exists {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "COMPONENT_LOGS",
+			Command:   string(core.CommandComponentLogs),
 			Status:    "error",
 			ErrorCode: "COMPONENT_NOT_FOUND",
 			Message:   "component not found: " + payload.ComponentID,
@@ -160,7 +160,7 @@ func HandleComponentLogs(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 
 	core.WriteJSON(conn, core.Response{
 		RequestID: cmd.RequestID,
-		Command:   "COMPONENT_LOGS",
+		Command:   string(core.CommandComponentLogs),
 		Status:    "ok",
 		Message:   "streaming",
 		Data: map[string]any{
@@ -203,7 +203,7 @@ func HandleComponentLogs(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 		log.Errorf("Failed to subscribe to %s: %v", subject, err)
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "COMPONENT_LOGS",
+			Command:   string(core.CommandComponentLogs),
 			Status:    "error",
 			ErrorCode: "NATS_SUBSCRIBE_FAILED",
 			Message:   err.Error(),

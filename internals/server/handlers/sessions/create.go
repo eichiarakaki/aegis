@@ -19,7 +19,7 @@ func HandleSessionCreate(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 		logger.WithRequestID(cmd.RequestID).Errorf("Failed to marshal payload: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "SESSION_CREATE",
+			Command:   string(core.CommandSessionCreate),
 			Status:    "error",
 			Message:   err.Error(),
 		})
@@ -30,7 +30,7 @@ func HandleSessionCreate(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 		logger.WithRequestID(cmd.RequestID).Errorf("Failed to unmarshal payload: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "SESSION_CREATE",
+			Command:   string(core.CommandSessionCreate),
 			Status:    "error",
 			Message:   fmt.Sprintf("Payload parsing error: %s", err.Error()),
 		})
@@ -42,7 +42,7 @@ func HandleSessionCreate(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 		logger.WithRequestID(cmd.RequestID).Warnf("Session creation failed: empty name")
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "SESSION_CREATE",
+			Command:   string(core.CommandSessionCreate),
 			Status:    "error",
 			Message:   "Missing required field: name",
 		})
@@ -54,7 +54,7 @@ func HandleSessionCreate(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 		logger.WithRequestID(cmd.RequestID).Warnf("Session creation failed: invalid mode %s", payload.Mode)
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "SESSION_CREATE",
+			Command:   string(core.CommandSessionCreate),
 			Status:    "error",
 			Message:   "Invalid mode: must be 'realtime' or 'historical'",
 		})
@@ -93,7 +93,7 @@ func HandleSessionCreate(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 
 	core.WriteJSON(conn, core.Response{
 		RequestID: cmd.RequestID,
-		Command:   "SESSION_CREATE",
+		Command:   string(core.CommandSessionCreate),
 		Status:    "ok",
 		Message:   fmt.Sprintf("Session created successfully: %s", session.Name),
 		Data: map[string]interface{}{
@@ -117,7 +117,7 @@ func HandleSessionCreateRun(cmd core.Command, conn net.Conn, sessionStore *core.
 		logger.WithRequestID(cmd.RequestID).Errorf("Failed to marshal payload: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "SESSION_CREATE_RUN",
+			Command:   string(core.CommandSessionCreate),
 			Status:    "error",
 			Message:   "Invalid payload format",
 		})
@@ -128,7 +128,7 @@ func HandleSessionCreateRun(cmd core.Command, conn net.Conn, sessionStore *core.
 		logger.WithRequestID(cmd.RequestID).Errorf("Failed to unmarshal payload: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "SESSION_CREATE_RUN",
+			Command:   string(core.CommandSessionCreate),
 			Status:    "error",
 			Message:   fmt.Sprintf("Payload parsing error: %s", err.Error()),
 		})
@@ -140,7 +140,7 @@ func HandleSessionCreateRun(cmd core.Command, conn net.Conn, sessionStore *core.
 		logger.WithRequestID(cmd.RequestID).Warnf("Session creation failed: empty name")
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "SESSION_CREATE_RUN",
+			Command:   string(core.CommandSessionCreate),
 			Status:    "error",
 			Message:   "Missing required field: name",
 		})
@@ -151,7 +151,7 @@ func HandleSessionCreateRun(cmd core.Command, conn net.Conn, sessionStore *core.
 		logger.WithRequestID(cmd.RequestID).Warnf("Session creation failed: invalid mode %s", payload.Mode)
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "SESSION_CREATE_RUN",
+			Command:   string(core.CommandSessionCreate),
 			Status:    "error",
 			Message:   "Invalid mode: must be 'realtime' or 'historical'",
 		})
@@ -162,7 +162,7 @@ func HandleSessionCreateRun(cmd core.Command, conn net.Conn, sessionStore *core.
 		logger.WithRequestID(cmd.RequestID).Warnf("Session creation failed: no component paths provided")
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "SESSION_CREATE_RUN",
+			Command:   string(core.CommandSessionCreate),
 			Status:    "error",
 			Message:   "At least one component path is required",
 		})
@@ -217,7 +217,7 @@ func HandleSessionCreateRun(cmd core.Command, conn net.Conn, sessionStore *core.
 
 	core.WriteJSON(conn, core.Response{
 		RequestID: cmd.RequestID,
-		Command:   "SESSION_CREATE_RUN",
+		Command:   string(core.CommandSessionCreate),
 		Status:    "ok",
 		Message:   fmt.Sprintf("Session created and %d components spawned", len(components)),
 		Data: map[string]interface{}{

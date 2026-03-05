@@ -18,7 +18,13 @@ import (
 
 // HandleComponentConnection manages incoming connections from components.
 func HandleComponentConnection(conn net.Conn, sessionStore *core.SessionStore, pool *servicescomponent.ConnectionPool) {
-	defer conn.Close()
+	defer func(conn net.Conn) {
+		err := conn.Close()
+		if err != nil {
+			logger.Errorf("error closing connection: %v", err)
+			return
+		}
+	}(conn)
 
 	logging := logger.WithComponent("ComponentManager").WithField("remote_addr", conn.RemoteAddr().String())
 	logging.Debugf("Component connection established")

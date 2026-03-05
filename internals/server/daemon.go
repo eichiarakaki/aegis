@@ -48,7 +48,12 @@ func InitDaemon() {
 		logger.Error("Failed to bind CLI socket:", err)
 		os.Exit(1)
 	}
-	defer cliListener.Close()
+	defer func(cliListener net.Listener) {
+		err := cliListener.Close()
+		if err != nil {
+			logger.Error("Failed to close CLI socket:", err)
+		}
+	}(cliListener)
 	logger.Info("Aegis daemon listening on", aegisSocket)
 
 	componentsListener, err := net.Listen("unix", componentsSocket)
@@ -56,7 +61,12 @@ func InitDaemon() {
 		logger.Error("Failed to bind components socket:", err)
 		os.Exit(1)
 	}
-	defer componentsListener.Close()
+	defer func(componentsListener net.Listener) {
+		err := componentsListener.Close()
+		if err != nil {
+			logger.Error("Failed to close components socket:", err)
+		}
+	}(componentsListener)
 	logger.Info("Components server listening on", componentsSocket)
 
 	quit := make(chan os.Signal, 1)
@@ -100,7 +110,15 @@ func InitDaemon() {
 	sig := <-quit
 	logger.Info("Received signal, shutting down:", sig)
 
-	cliListener.Close()
-	componentsListener.Close()
+	err = cliListener.Close()
+	if err != nil {
+		logger.Error("Failed to close CLI socket:", err)
+		return
+	}
+	err = componentsListener.Close()
+	if err != nil {
+		logger.Error("Failed to close components socket:", err)
+		return
+	}
 	logger.Info("Aegis daemon stopped")
 }

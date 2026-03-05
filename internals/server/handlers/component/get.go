@@ -19,7 +19,7 @@ func HandleComponentGet(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 	if err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "COMPONENT_GET",
+			Command:   string(core.CommandComponentGet),
 			Status:    "error",
 			Message:   "Invalid payload format",
 		})
@@ -51,7 +51,7 @@ func HandleComponentGet(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 	}
 
 	// Getting component
-	data, err := components.ComponentGet(session, payload.ComponentID)
+	data, err := components.Get(session, payload.ComponentID)
 	if err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
@@ -64,7 +64,7 @@ func HandleComponentGet(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 
 	core.WriteJSON(conn, core.Response{
 		RequestID: cmd.RequestID,
-		Command:   "COMPONENT_GET",
+		Command:   string(core.CommandComponentGet),
 		Status:    "ok",
 		Data:      data,
 	})

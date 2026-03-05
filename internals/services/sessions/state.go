@@ -9,8 +9,8 @@ func GetSessionState(cmd core.Command, session *core.Session) (core.Response, er
 
 	var components []*component.Component
 
-	for _, component := range session.Registry.List() {
-		components = append(components, component)
+	for _, c := range session.Registry.List() {
+		components = append(components, c)
 	}
 
 	sessionState := core.Response{
@@ -27,12 +27,3 @@ func GetSessionState(cmd core.Command, session *core.Session) (core.Response, er
 
 	return sessionState, nil
 }
-
-// ??? I forgot what I was trying to do here...
-//func GetSessionsState(sessionHint string, sessionStore *core.SessionStore, sessionID string) (*core.Session, error) {
-//	session, found := GetSessionByHint(sessionID, sessionStore)
-//	if !found {
-//		return nil, fmt.Errorf("session not found: %s", sessionID)
-//	}
-//	return session, nil
-//}

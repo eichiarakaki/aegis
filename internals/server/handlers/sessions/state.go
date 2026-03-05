@@ -22,7 +22,7 @@ func HandleSessionStart(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 		logger.WithRequestID(cmd.RequestID).Errorf("Failed to marshal payload: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "SESSION_START",
+			Command:   string(core.CommandSessionStart),
 			Status:    "error",
 			Message:   "Invalid payload format",
 		})
@@ -33,7 +33,7 @@ func HandleSessionStart(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 		logger.WithRequestID(cmd.RequestID).Errorf("Failed to unmarshal payload: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "SESSION_START",
+			Command:   string(core.CommandSessionStart),
 			Status:    "error",
 			Message:   fmt.Sprintf("Payload parsing error: %s", err.Error()),
 		})
@@ -45,7 +45,7 @@ func HandleSessionStart(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 		logger.WithRequestID(cmd.RequestID).Warnf("Session start failed: missing session_id")
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "SESSION_START",
+			Command:   string(core.CommandSessionStart),
 			Status:    "error",
 			Message:   "Missing required field: session_id",
 		})
@@ -60,7 +60,7 @@ func HandleSessionStart(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 		logger.WithRequestID(cmd.RequestID).Warnf("Session not found: %s", payload.SessionID)
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "SESSION_START",
+			Command:   string(core.CommandSessionStart),
 			Status:    "error",
 			Message:   err.Error(),
 		})
@@ -90,7 +90,7 @@ func HandleSessionStart(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 
 	core.WriteJSON(conn, core.Response{
 		RequestID: cmd.RequestID,
-		Command:   "SESSION_START",
+		Command:   string(core.CommandSessionStart),
 		Status:    "ok",
 		Message:   fmt.Sprintf("Session started successfully: %s", utils.GetShortHash(session.ID)),
 		Data: map[string]any{
@@ -112,7 +112,7 @@ func HandleSessionStop(cmd core.Command, conn net.Conn, sessionStore *core.Sessi
 		logger.WithRequestID(cmd.RequestID).Errorf("Failed to marshal payload: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "SESSION_STOP",
+			Command:   string(core.CommandSessionStop),
 			Status:    "error",
 			Message:   "Invalid payload format",
 		})
@@ -123,7 +123,7 @@ func HandleSessionStop(cmd core.Command, conn net.Conn, sessionStore *core.Sessi
 		logger.WithRequestID(cmd.RequestID).Errorf("Failed to unmarshal payload: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "SESSION_STOP",
+			Command:   string(core.CommandSessionStop),
 			Status:    "error",
 			Message:   fmt.Sprintf("Payload parsing error: %s", err.Error()),
 		})
@@ -178,7 +178,7 @@ func HandleSessionStop(cmd core.Command, conn net.Conn, sessionStore *core.Sessi
 
 	core.WriteJSON(conn, core.Response{
 		RequestID: cmd.RequestID,
-		Command:   "SESSION_STOP",
+		Command:   string(core.CommandSessionStop),
 		Status:    "ok",
 		Message:   fmt.Sprintf("Session stopped successfully: %s", utils.GetShortHash(session.ID)),
 		Data: map[string]any{
@@ -200,7 +200,7 @@ func HandleSessionState(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 		logger.WithRequestID(cmd.RequestID).Errorf("Failed to marshal payload: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "SESSION_STATE",
+			Command:   string(core.CommandSessionState),
 			Status:    "error",
 			Message:   "Invalid payload format",
 		})
@@ -262,7 +262,7 @@ func HandleSessionState(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 
 	core.WriteJSON(conn, core.Response{
 		RequestID: cmd.RequestID,
-		Command:   "SESSION_STATE",
+		Command:   string(core.CommandSessionState),
 		Status:    "ok",
 		Data:      data,
 	})

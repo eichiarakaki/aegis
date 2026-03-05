@@ -32,7 +32,7 @@ func HandleDaemonKill(requestID string, conn net.Conn) {
 	if err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: requestID,
-			Command:   "DAEMON_KILL",
+			Command:   string(core.CommandDaemonKill),
 			Status:    "error",
 			Message:   fmt.Sprintf("Error killing the process: %s", err.Error()),
 			Data:      nil,
@@ -42,7 +42,7 @@ func HandleDaemonKill(requestID string, conn net.Conn) {
 
 	core.WriteJSON(conn, core.Response{
 		RequestID: requestID,
-		Command:   "DAEMON_KILL",
+		Command:   string(core.CommandDaemonKill),
 		Status:    "ok",
 		Data:      nil,
 	})

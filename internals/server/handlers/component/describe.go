@@ -20,7 +20,7 @@ func HandleComponentDescribe(cmd core.Command, conn net.Conn, sessionStore *core
 		logger.WithRequestID(cmd.RequestID).Errorf("Failed to marshal payload: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "COMPONENT_DESCRIBE",
+			Command:   string(core.CommandComponentDescribe),
 			Status:    "error",
 			Message:   "Invalid payload format",
 		})
@@ -66,7 +66,7 @@ func HandleComponentDescribe(cmd core.Command, conn net.Conn, sessionStore *core
 	}
 
 	// Describe components
-	data, err := servicescomponent.ComponentDescribe(session)
+	data, err := servicescomponent.Describe(session)
 	if err != nil {
 		logger.WithRequestID(cmd.RequestID).Errorf("Failed to describe components: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
@@ -82,7 +82,7 @@ func HandleComponentDescribe(cmd core.Command, conn net.Conn, sessionStore *core
 
 	core.WriteJSON(conn, core.Response{
 		RequestID: cmd.RequestID,
-		Command:   "COMPONENT_DESCRIBE",
+		Command:   string(core.CommandComponentDescribe),
 		Status:    "ok",
 		Data:      data,
 	})

@@ -19,7 +19,7 @@ func HandleSessionAttach(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 	if err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "SESSION_ATTACH",
+			Command:   string(core.CommandSessionAttach),
 			Status:    "error",
 			Message:   "Invalid payload format",
 		})
@@ -29,7 +29,7 @@ func HandleSessionAttach(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "SESSION_ATTACH",
+			Command:   string(core.CommandSessionAttach),
 			Status:    "error",
 			Message:   fmt.Sprintf("Payload parsing error: %s", err.Error()),
 		})
@@ -40,7 +40,7 @@ func HandleSessionAttach(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 	if payload.SessionID == "" {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "SESSION_ATTACH",
+			Command:   string(core.CommandSessionAttach),
 			Status:    "error",
 			Message:   "Missing required field: session_id",
 		})
@@ -50,7 +50,7 @@ func HandleSessionAttach(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 	if len(payload.Paths) == 0 {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "SESSION_ATTACH",
+			Command:   string(core.CommandSessionAttach),
 			Status:    "error",
 			Message:   "At least one component path is required",
 		})
@@ -94,7 +94,7 @@ func HandleSessionAttach(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 
 	core.WriteJSON(conn, core.Response{
 		RequestID: cmd.RequestID,
-		Command:   "SESSION_ATTACH",
+		Command:   string(core.CommandSessionAttach),
 		Status:    "ok",
 		Message:   fmt.Sprintf("Attached %d components to %s (%s)", len(components), session.Name, utils.GetShortHash(session.ID)),
 		Data: map[string]interface{}{

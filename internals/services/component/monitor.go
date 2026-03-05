@@ -9,9 +9,9 @@ import (
 	"github.com/eichiarakaki/aegis/internals/logger"
 )
 
-// ComponentHeartbeatMonitor monitors component health across all sessions
+// HeartbeatMonitor monitors component health across all sessions
 // and sends periodic PING messages to detect dead components.
-type ComponentHeartbeatMonitor struct {
+type HeartbeatMonitor struct {
 	sessionStore *core.SessionStore
 	pool         *ConnectionPool
 	interval     time.Duration
@@ -22,8 +22,8 @@ type ComponentHeartbeatMonitor struct {
 func NewComponentHeartbeatMonitor(
 	sessionStore *core.SessionStore,
 	pool *ConnectionPool,
-) *ComponentHeartbeatMonitor {
-	return &ComponentHeartbeatMonitor{
+) *HeartbeatMonitor {
+	return &HeartbeatMonitor{
 		sessionStore: sessionStore,
 		pool:         pool,
 		interval:     5 * time.Second,
@@ -32,7 +32,7 @@ func NewComponentHeartbeatMonitor(
 }
 
 // Start begins monitoring component health on a fixed interval.
-func (m *ComponentHeartbeatMonitor) Start() {
+func (m *HeartbeatMonitor) Start() {
 	ticker := time.NewTicker(m.interval)
 	defer ticker.Stop()
 
@@ -43,7 +43,7 @@ func (m *ComponentHeartbeatMonitor) Start() {
 
 // checkComponents iterates over every session and its registry,
 // sending PINGs to live components and cleaning up dead ones.
-func (m *ComponentHeartbeatMonitor) checkComponents() {
+func (m *HeartbeatMonitor) checkComponents() {
 	for _, session := range m.sessionStore.ListSessions() {
 		if session.Registry == nil {
 			continue
@@ -69,7 +69,7 @@ func (m *ComponentHeartbeatMonitor) checkComponents() {
 }
 
 // sendPing sends a PING message to the component through its active connection.
-func (m *ComponentHeartbeatMonitor) sendPing(comp *component.Component, log *logger.Logger) {
+func (m *HeartbeatMonitor) sendPing(comp *component.Component, log *logger.Logger) {
 	conn, exists := m.pool.Get(comp.ID)
 	if !exists {
 		log.Warnf("No active connection found for component, skipping PING")
@@ -91,7 +91,7 @@ func (m *ComponentHeartbeatMonitor) sendPing(comp *component.Component, log *log
 
 // handleDeadComponent transitions the component to ERROR state, notifies its
 // parent session, closes its connection, and unregisters it from the registry.
-func (m *ComponentHeartbeatMonitor) handleDeadComponent(
+func (m *HeartbeatMonitor) handleDeadComponent(
 	registry *component.ComponentRegistry,
 	comp *component.Component,
 	log *logger.Logger,

@@ -20,7 +20,7 @@ func HandleSessionDelete(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 		logger.WithRequestID(cmd.RequestID).Errorf("Failed to marshal payload: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "SESSION_DELETE",
+			Command:   string(core.CommandSessionDelete),
 			Status:    "error",
 			Message:   "Invalid payload format",
 		})
@@ -31,7 +31,7 @@ func HandleSessionDelete(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 		logger.WithRequestID(cmd.RequestID).Errorf("Failed to unmarshal payload: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "SESSION_DELETE",
+			Command:   string(core.CommandSessionDelete),
 			Status:    "error",
 			Message:   fmt.Sprintf("Payload parsing error: %s", err.Error()),
 		})
@@ -43,7 +43,7 @@ func HandleSessionDelete(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 		logger.WithRequestID(cmd.RequestID).Warnf("Session deletion failed: missing session_id")
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "SESSION_DELETE",
+			Command:   string(core.CommandSessionDelete),
 			Status:    "error",
 			Message:   "Missing required field: session_id",
 		})
@@ -85,7 +85,7 @@ func HandleSessionDelete(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 
 	core.WriteJSON(conn, core.Response{
 		RequestID: cmd.RequestID,
-		Command:   "SESSION_DELETE",
+		Command:   string(core.CommandSessionDelete),
 		Status:    "ok",
 		Message:   fmt.Sprintf("Session deleted successfully: %s (%s)", sessionName, utils.GetShortHash(sessionID)),
 		Data: map[string]interface{}{

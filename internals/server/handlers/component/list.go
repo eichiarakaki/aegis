@@ -20,7 +20,7 @@ func HandleComponentList(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 		logger.WithRequestID(cmd.RequestID).Errorf("Failed to marshal payload: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "COMPONENT_LIST",
+			Command:   string(core.CommandComponentList),
 			Status:    "error",
 			Message:   "Invalid payload format",
 		})
@@ -31,7 +31,7 @@ func HandleComponentList(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 		logger.WithRequestID(cmd.RequestID).Errorf("Failed to unmarshal payload: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "COMPONENT_LIST",
+			Command:   string(core.CommandComponentList),
 			Status:    "error",
 			Message:   fmt.Sprintf("Payload parsing error: %s", err.Error()),
 		})
@@ -66,7 +66,7 @@ func HandleComponentList(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 	}
 
 	// List components
-	data, err := services_component.ComponentList(session)
+	data, err := services_component.List(session)
 	if err != nil {
 		logger.WithRequestID(cmd.RequestID).Errorf("Failed to list components: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
@@ -82,7 +82,7 @@ func HandleComponentList(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 
 	core.WriteJSON(conn, core.Response{
 		RequestID: cmd.RequestID,
-		Command:   "COMPONENT_LIST",
+		Command:   string(core.CommandComponentList),
 		Status:    "ok",
 		Data:      data,
 	})

@@ -180,7 +180,13 @@ func WaitForConfigACK(
 	if err := conn.SetReadDeadline(time.Now().Add(15 * time.Second)); err != nil {
 		return err
 	}
-	defer conn.SetReadDeadline(time.Time{})
+	defer func(conn net.Conn, t time.Time) {
+		err := conn.SetReadDeadline(t)
+		if err != nil {
+			logger.Errorf("error closing connection: %v", err)
+			return
+		}
+	}(conn, time.Time{})
 
 	logger.Debugf("Waiting for config ACK (correlating to message_id=%s)…", configureMessageID)
 

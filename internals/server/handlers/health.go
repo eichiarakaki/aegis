@@ -39,7 +39,7 @@ func HandleGlobalHealth(requestID string, conn net.Conn, store *core.SessionStor
 
 	core.WriteJSON(conn, core.Response{
 		RequestID: requestID,
-		Command:   "HEALTH_CHECK",
+		Command:   string(core.CommandHealthCheck),
 		Status:    "ok",
 		Data:      data,
 	})
@@ -49,7 +49,7 @@ func HandleSessionHealth(requestID string, conn net.Conn, store *core.SessionSto
 	// Implement parsing real payload later
 	core.WriteJSON(conn, core.Response{
 		RequestID: requestID,
-		Command:   "HEALTH_CHECK_SESSION",
+		Command:   string(core.CommandHealthCheckSession),
 		Status:    "error",
 		ErrorCode: "NOT_IMPLEMENTED",
 		Message:   "Session health not implemented yet",
@@ -60,7 +60,7 @@ func HandleSessionHealth(requestID string, conn net.Conn, store *core.SessionSto
 func HandleComponentHealth(requestID string, conn net.Conn, store *core.SessionStore) {
 	core.WriteJSON(conn, core.Response{
 		RequestID: requestID,
-		Command:   "HEALTH_CHECK_COMPONENT",
+		Command:   string(core.CommandHealthCheckComp),
 		Status:    "error",
 		ErrorCode: "NOT_IMPLEMENTED",
 		Message:   "Component health not implemented yet",
@@ -87,7 +87,7 @@ func HandleHealthCheck(target string, conn net.Conn, store *core.SessionStore) {
 	default:
 		core.WriteJSON(conn, core.Response{
 			RequestID: requestID,
-			Command:   "HEALTH_CHECK",
+		Command:   string(core.CommandHealthCheck),
 			Status:    "error",
 			ErrorCode: "INVALID_TARGET",
 			Message:   "Invalid health target",
