@@ -90,7 +90,7 @@ var daemonShutdownCmd = &cobra.Command{
 
 		pid, err := readPID(cfg.AegisPIDFile)
 		if err != nil {
-			if stopErr := sendCommand("DAEMON_SHUTDOWN", nil); stopErr != nil {
+			if stopErr := sendCommand(core.CommandDaemonShutdown, nil); stopErr != nil {
 				log.Fatalf("Daemon does not appear to be running: %v", stopErr)
 			}
 			return
@@ -123,7 +123,7 @@ var daemonKillCmd = &cobra.Command{
 
 		pid, err := readPID(cfg.AegisPIDFile)
 		if err != nil {
-			if stopErr := sendCommand("DAEMON_KILL", nil); stopErr != nil {
+			if stopErr := sendCommand(core.CommandDaemonKill, nil); stopErr != nil {
 				log.Fatalf("Daemon does not appear to be running: %v", stopErr)
 			}
 			return
@@ -179,12 +179,12 @@ var sessionCreateCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		name := args[0]
 		if len(paths) == 0 {
-			if err := sendCommand("SESSION_CREATE", core.SessionCreatePayload{Name: name, Mode: mode}); err != nil {
+			if err := sendCommand(core.CommandSessionCreate, core.SessionCreatePayload{Name: name, Mode: mode}); err != nil {
 				log.Fatal(err)
 			}
 			return
 		}
-		if err := sendCommand("SESSION_CREATE_RUN", core.SessionCreateRunPayload{Name: name, Mode: mode, Paths: paths}); err != nil {
+		if err := sendCommand(core.CommandSessionCreate, core.SessionCreateRunPayload{Name: name, Mode: mode, Paths: paths}); err != nil {
 			log.Fatal(err)
 		}
 	},
@@ -195,7 +195,7 @@ var sessionAttachCmd = &cobra.Command{
 	Short: "Attach components to an existing session",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := sendCommand("SESSION_ATTACH", core.SessionAttachPayload{SessionID: args[0], Paths: paths}); err != nil {
+		if err := sendCommand(core.CommandSessionAttach, core.SessionAttachPayload{SessionID: args[0], Paths: paths}); err != nil {
 			log.Fatal(err)
 		}
 	},
@@ -206,7 +206,7 @@ var sessionStartCmd = &cobra.Command{
 	Short: "Start a stopped session",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := sendCommand("SESSION_START", core.SessionActionPayload{SessionID: args[0]}); err != nil {
+		if err := sendCommand(core.CommandSessionStart, core.SessionActionPayload{SessionID: args[0]}); err != nil {
 			log.Fatal(err)
 		}
 	},
@@ -217,7 +217,7 @@ var sessionStopCmd = &cobra.Command{
 	Short: "Stop a running session",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := sendCommand("SESSION_STOP", core.SessionActionPayload{SessionID: args[0]}); err != nil {
+		if err := sendCommand(core.CommandSessionStop, core.SessionActionPayload{SessionID: args[0]}); err != nil {
 			log.Fatal(err)
 		}
 	},
@@ -227,7 +227,7 @@ var sessionListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all sessions",
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := sendCommand("SESSION_LIST", nil); err != nil {
+		if err := sendCommand(core.CommandSessionList, nil); err != nil {
 			log.Fatal(err)
 		}
 	},
@@ -238,7 +238,7 @@ var sessionStateCmd = &cobra.Command{
 	Short: "Gets state of a specific session",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := sendCommand("SESSION_STATE", core.SessionActionPayload{SessionID: args[0]}); err != nil {
+		if err := sendCommand(core.CommandSessionState, core.SessionActionPayload{SessionID: args[0]}); err != nil {
 			log.Fatal(err)
 		}
 	},
@@ -249,7 +249,7 @@ var sessionDeleteCmd = &cobra.Command{
 	Short: "Delete a session",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := sendCommand("SESSION_DELETE", core.SessionActionPayload{SessionID: args[0]}); err != nil {
+		if err := sendCommand(core.CommandSessionDelete, core.SessionActionPayload{SessionID: args[0]}); err != nil {
 			log.Fatal(err)
 		}
 	},
@@ -269,7 +269,7 @@ var componentListCmd = &cobra.Command{
 	Short: "List components in a session",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := sendCommand("COMPONENT_LIST", core.ComponentListPayload{SessionID: args[0]}); err != nil {
+		if err := sendCommand(core.CommandComponentList, core.ComponentListPayload{SessionID: args[0]}); err != nil {
 			log.Fatal(err)
 		}
 	},
@@ -280,7 +280,7 @@ var componentGetCmd = &cobra.Command{
 	Short: "Get raw component info",
 	Args:  cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := sendCommand("COMPONENT_GET", core.ComponentGetPayload{SessionID: args[0], ComponentID: args[1]}); err != nil {
+		if err := sendCommand(core.CommandComponentGet, core.ComponentGetPayload{SessionID: args[0], ComponentID: args[1]}); err != nil {
 			log.Fatal(err)
 		}
 	},
@@ -291,7 +291,7 @@ var componentDescribeCmd = &cobra.Command{
 	Short: "Describe components in a session",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := sendCommand("COMPONENT_DESCRIBE", core.ComponentListPayload{SessionID: args[0]}); err != nil {
+		if err := sendCommand(core.CommandComponentDescribe, core.ComponentListPayload{SessionID: args[0]}); err != nil {
 			log.Fatal(err)
 		}
 	},
@@ -327,7 +327,7 @@ var healthCheckCmd = &cobra.Command{
 	Short: "Run a health check (all|data|sessions)",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := sendCommand("HEALTH_CHECK", core.HealthCheckPayload{Target: args[0]}); err != nil {
+		if err := sendCommand(core.CommandHealthCheck, core.HealthCheckPayload{Target: args[0]}); err != nil {
 			log.Fatal(err)
 		}
 	},
@@ -338,7 +338,7 @@ var healthSessionCmd = &cobra.Command{
 	Short: "Health check for a specific session",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := sendCommand("HEALTH_CHECK_SESSION", core.HealthCheckSessionPayload{SessionID: args[0]}); err != nil {
+		if err := sendCommand(core.CommandHealthCheckSession, core.HealthCheckSessionPayload{SessionID: args[0]}); err != nil {
 			log.Fatal(err)
 		}
 	},
@@ -349,7 +349,7 @@ var healthComponentCmd = &cobra.Command{
 	Short: "Health check for a specific component",
 	Args:  cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := sendCommand("HEALTH_CHECK_COMPONENT", core.HealthCheckComponentPayload{SessionID: args[0], ComponentID: args[1]}); err != nil {
+		if err := sendCommand(core.CommandHealthCheckComp, core.HealthCheckComponentPayload{SessionID: args[0], ComponentID: args[1]}); err != nil {
 			log.Fatal(err)
 		}
 	},
@@ -359,7 +359,7 @@ var healthComponentCmd = &cobra.Command{
 // REQUEST / SEND
 /////////////////////////
 
-func requestJSON(cmdType string, payload interface{}) (map[string]any, error) {
+func requestJSON(cmdType core.CommandType, payload interface{}) (map[string]any, error) {
 	cfg, err := config.LoadGlobals()
 	if err != nil {
 		return nil, err
@@ -371,11 +371,7 @@ func requestJSON(cmdType string, payload interface{}) (map[string]any, error) {
 	}
 	defer conn.Close()
 
-	cmd := core.Command{
-		RequestID: uuid.NewString(),
-		Type:      cmdType,
-		Payload:   payload,
-	}
+	cmd := core.Command{RequestID: uuid.NewString(), Type: cmdType, Payload: payload}
 
 	if err := json.NewEncoder(conn).Encode(cmd); err != nil {
 		return nil, err
@@ -388,7 +384,7 @@ func requestJSON(cmdType string, payload interface{}) (map[string]any, error) {
 	return response, nil
 }
 
-func sendCommand(cmdType string, payload interface{}) error {
+func sendCommand(cmdType core.CommandType, payload interface{}) error {
 	resp, err := requestJSON(cmdType, payload)
 	if err != nil {
 		return err
@@ -419,7 +415,7 @@ func componentLogDir(sessionID string) string {
 // resolveComponentID resolves a name or ID string to a concrete component ID
 // by asking the daemon for the component list of the given session.
 func resolveComponentID(sessionID, ref string) (componentID, componentName string, err error) {
-	resp, err := requestJSON("COMPONENT_LIST", core.ComponentListPayload{SessionID: sessionID})
+	resp, err := requestJSON(core.CommandComponentList, core.ComponentListPayload{SessionID: sessionID})
 	if err != nil {
 		return "", "", fmt.Errorf("list components: %w", err)
 	}
