@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/eichiarakaki/aegis/internals/config"
+
 	"github.com/nats-io/nats.go"
 )
 
@@ -16,6 +17,7 @@ type Config struct {
 	Topics    []string // component topic strings, e.g. ["klines.BTCUSDT.1m", "trades.BTCUSDT"]
 	DataRoot  string   // AEGIS_DATA_ROOT
 	NC        *nats.Conn
+	DS        *DataStreamServer // if non-nil, Publish delivers with backpressure (historical mode)
 }
 
 // Orchestrator fans out one SymbolMerger per unique symbol found in Topics,
@@ -51,7 +53,7 @@ func New(cfg Config) (*Orchestrator, error) {
 // goroutines. It returns immediately after the goroutines are running.
 func (o *Orchestrator) Start(ctx context.Context) error {
 	resolver := NewFileResolver(o.cfg.DataRoot)
-	pub := NewPublisher(o.cfg.NC)
+	pub := NewPublisher(o.cfg.NC, o.cfg.DS)
 
 	// Group topics by symbol.
 	symbolSources, err := o.buildSources(resolver)

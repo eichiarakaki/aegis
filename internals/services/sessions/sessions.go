@@ -53,7 +53,7 @@ func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *na
 
 	// Start the data stream server before the orchestrator so the Unix socket
 	// is ready by the time the first NATS messages are published.
-	ds := core.NewDataStreamServer(session, nc)
+	ds := orchestrator.NewDataStreamServer(session, nc)
 	if err := ds.Start(context.Background()); err != nil {
 		return fmt.Errorf("session %s: data stream server: %w", session.ID, err)
 	}
@@ -63,6 +63,7 @@ func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *na
 		SessionID: session.ID,
 		Topics:    *session.Topics,
 		NC:        nc,
+		DS:        ds,
 	})
 	if err != nil {
 		ds.Stop()

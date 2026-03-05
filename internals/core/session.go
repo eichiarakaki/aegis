@@ -66,7 +66,7 @@ type Session struct {
 	ComponentPaths []string
 
 	Orchestrator *orchestrator.Orchestrator
-	DataStream   *DataStreamServer
+	DataStream   *orchestrator.DataStreamServer
 
 	mu sync.RWMutex
 }
@@ -598,4 +598,18 @@ func IsValidSessionStateTransition(from, to SessionStateType) bool {
 	}
 
 	return false
+}
+
+func (s *Session) RLock() {
+	s.mu.RLock()
+}
+
+func (s *Session) RUnlock() {
+	s.mu.RUnlock()
+}
+
+func (s *Session) WithRLock(fn func()) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	fn()
 }
