@@ -49,7 +49,7 @@ func (p *Publisher) Publish(sessionID string, row RawRow) error {
 		return fmt.Errorf("publisher: marshal envelope: %w", err)
 	}
 
-	p.log.Debugf("→ %s ts=%d bytes=%d", row.Topic, row.Timestamp, len(data))
+	// p.log.Debugf("→ %s ts=%d bytes=%d", row.Topic, row.Timestamp, len(data))
 
 	if p.ds != nil {
 		// Historical mode: block until every interested component receives it.

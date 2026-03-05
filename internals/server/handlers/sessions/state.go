@@ -7,13 +7,14 @@ import (
 
 	"github.com/eichiarakaki/aegis/internals/core"
 	"github.com/eichiarakaki/aegis/internals/logger"
-	servicessessions "github.com/eichiarakaki/aegis/internals/services/sessions"
+	servicescomponent "github.com/eichiarakaki/aegis/internals/services/component"
+	"github.com/eichiarakaki/aegis/internals/services/sessions"
 	"github.com/eichiarakaki/aegis/internals/services/utils"
 	"github.com/nats-io/nats.go"
 )
 
 // HandleSessionStart starts an existing session.
-func HandleSessionStart(cmd core.Command, conn net.Conn, sessionStore *core.SessionStore, nc *nats.Conn) {
+func HandleSessionStart(cmd core.Command, conn net.Conn, sessionStore *core.SessionStore, nc *nats.Conn, logStore *servicescomponent.LogStore) {
 	// Deserialize payload
 	var payload core.SessionActionPayload
 	payloadBytes, err := json.Marshal(cmd.Payload)
@@ -54,7 +55,7 @@ func HandleSessionStart(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 	logger.WithRequestID(cmd.RequestID).Infof("Starting session: %s", payload.SessionID)
 
 	// Get session
-	session, err := servicessessions.GetSessionByHint(payload.SessionID, sessionStore)
+	session, err := sessions.GetSessionByHint(payload.SessionID, sessionStore)
 	if err != nil {
 		logger.WithRequestID(cmd.RequestID).Warnf("Session not found: %s", payload.SessionID)
 		core.WriteJSON(conn, core.Response{
@@ -69,7 +70,7 @@ func HandleSessionStart(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 	previousState := session.State
 
 	// Start session
-	if err := servicessessions.StartSession(session, cmd, conn, nc); err != nil {
+	if err := sessions.StartSession(session, cmd, conn, nc); err != nil {
 		logger.WithRequestID(cmd.RequestID).Errorf("Failed to start session: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
@@ -144,7 +145,7 @@ func HandleSessionStop(cmd core.Command, conn net.Conn, sessionStore *core.Sessi
 	logger.WithRequestID(cmd.RequestID).Infof("Stopping session: %s", payload.SessionID)
 
 	// Get session
-	session, err := servicessessions.GetSessionByHint(payload.SessionID, sessionStore)
+	session, err := sessions.GetSessionByHint(payload.SessionID, sessionStore)
 	if err != nil {
 		logger.WithRequestID(cmd.RequestID).Warnf("Session not found: %s", payload.SessionID)
 		core.WriteJSON(conn, core.Response{
@@ -159,7 +160,7 @@ func HandleSessionStop(cmd core.Command, conn net.Conn, sessionStore *core.Sessi
 	previousState := session.State
 
 	// Stop session
-	if err := servicessessions.StopSession(session, sessionStore); err != nil {
+	if err := sessions.StopSession(session, sessionStore); err != nil {
 		logger.WithRequestID(cmd.RequestID).Errorf("Failed to stop session: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
@@ -232,7 +233,7 @@ func HandleSessionState(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 	logger.WithRequestID(cmd.RequestID).Debugf("Querying session state: %s", payload.SessionID)
 
 	// Get session
-	session, err := servicessessions.GetSessionByHint(payload.SessionID, sessionStore)
+	session, err := sessions.GetSessionByHint(payload.SessionID, sessionStore)
 	if err != nil {
 		logger.WithRequestID(cmd.RequestID).Warnf("Session not found: %s", payload.SessionID)
 		core.WriteJSON(conn, core.Response{
@@ -245,7 +246,7 @@ func HandleSessionState(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 	}
 
 	// Get session state
-	data, err := servicessessions.GetSessionState(cmd, session)
+	data, err := sessions.GetSessionState(cmd, session)
 	if err != nil {
 		logger.WithRequestID(cmd.RequestID).Errorf("Failed to retrieve session state: %s", err.Error())
 		core.WriteJSON(conn, core.Response{

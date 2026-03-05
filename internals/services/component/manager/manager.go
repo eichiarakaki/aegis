@@ -23,9 +23,6 @@ func HandleComponentConnection(conn net.Conn, sessionStore *core.SessionStore, p
 	logging := logger.WithComponent("ComponentManager").WithField("remote_addr", conn.RemoteAddr().String())
 	logging.Debugf("Component connection established")
 
-	// A single decoder for the entire connection lifetime.
-	// json.NewDecoder buffers internally — creating multiple decoders on the
-	// same conn causes bytes to be silently consumed and lost.
 	dec := json.NewDecoder(bufio.NewReader(conn))
 
 	// STEP 1: Receive REGISTER message
@@ -88,8 +85,20 @@ func HandleComponentConnection(conn net.Conn, sessionStore *core.SessionStore, p
 
 	logging = logging.WithField("session_id", session.ID)
 
-	// STEP 3: Create and register component record
-	componentID := utils.GenerateComponentID()
+	// STEP 3: Resolve component ID.
+	// If the component was launched by aegisd (via LaunchComponents), it will
+	// have received AEGIS_COMPONENT_ID and sent it back in the REGISTER payload.
+	// Honouring that ID keeps the log-pump subject (aegis.logs.<id>) and the
+	// registry entry in sync. Fall back to generating a new ID only when the
+	// component connected manually without a pre-assigned ID.
+	componentID := registerPayload.ComponentID
+	if componentID == "" {
+		componentID = utils.GenerateComponentID()
+		logging.Debugf("No component_id in REGISTER payload — generated: %s", componentID)
+	} else {
+		logging.Debugf("Using pre-assigned component_id from REGISTER payload: %s", componentID)
+	}
+
 	comp := &component.Component{
 		ID:            componentID,
 		Name:          registerPayload.ComponentName,

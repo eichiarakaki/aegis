@@ -14,20 +14,19 @@ import (
 	"github.com/eichiarakaki/aegis/internals/server/handlers"
 	"github.com/eichiarakaki/aegis/internals/server/handlers/component"
 	"github.com/eichiarakaki/aegis/internals/server/handlers/sessions"
+	servicescomponent "github.com/eichiarakaki/aegis/internals/services/component"
 	"github.com/nats-io/nats.go"
 )
 
-func HandleAegis(conn net.Conn, sessionStore *core.SessionStore, nc *nats.Conn) {
+func HandleAegis(conn net.Conn, sessionStore *core.SessionStore, nc *nats.Conn, logStore *servicescomponent.LogStore) {
 	defer func(conn net.Conn) {
-		err := conn.Close()
-		if err != nil {
+		if err := conn.Close(); err != nil {
 			logger.Error(err)
 		}
 	}(conn)
 
 	var cmd core.Command
-	err := json.NewDecoder(conn).Decode(&cmd)
-	if err != nil {
+	if err := json.NewDecoder(conn).Decode(&cmd); err != nil {
 		log.Println("Invalid command:", err)
 		return
 	}
@@ -51,7 +50,7 @@ func HandleAegis(conn net.Conn, sessionStore *core.SessionStore, nc *nats.Conn) 
 		sessions.HandleSessionAttach(cmd, conn, sessionStore)
 
 	case "SESSION_START":
-		sessions.HandleSessionStart(cmd, conn, sessionStore, nc)
+		sessions.HandleSessionStart(cmd, conn, sessionStore, nc, logStore)
 
 	case "SESSION_STOP":
 		sessions.HandleSessionStop(cmd, conn, sessionStore)
@@ -75,6 +74,11 @@ func HandleAegis(conn net.Conn, sessionStore *core.SessionStore, nc *nats.Conn) 
 
 	case "COMPONENT_DESCRIBE":
 		component.HandleComponentDescribe(cmd, conn, sessionStore)
+
+	case "COMPONENT_LOGS":
+		component.HandleComponentLogs(cmd, conn, sessionStore, nc, logStore)
+	case "COMPONENT_LOG_PATH":
+		component.HandleComponentLogPath(cmd, conn, sessionStore)
 
 	// -- Health ----------------------------------------------------
 

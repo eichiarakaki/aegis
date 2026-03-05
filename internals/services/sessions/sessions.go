@@ -47,8 +47,6 @@ func clearSessionRuntime(sessionID string) {
 
 // ComponentReadyTimeout is the time StartSession waits for at least one
 // component to reach CONFIGURED state before starting the orchestrator.
-// This gives launched binaries time to connect, register, and complete
-// the handshake so their topics are populated in the session.
 var ComponentReadyTimeout = 2 * time.Second
 
 // StartSession starts the session: launches attached component binaries,
@@ -58,14 +56,11 @@ func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *na
 		return err
 	}
 
-	// Launch all binaries stored by SESSION_ATTACH.
+	// Launch all binaries — stdout/stderr go to rotating log files.
 	if err := LaunchComponents(session); err != nil {
 		logger.Warnf("Session %s: component launch warning: %s", session.ID, err.Error())
 	}
 
-	// Wait for components to be ready before starting the orchestrator so their
-	// topics are populated. Use whichever count is higher: attached paths (not yet
-	// connected) or components already registered in the registry (connected manually).
 	paths := session.GetComponentPaths()
 	registered := session.Registry.Count()
 	expected := len(paths)
@@ -73,7 +68,8 @@ func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *na
 		expected = registered
 	}
 	if expected > 0 {
-		logger.Infof("Session %s: waiting up to %s for %d component(s) to be ready", session.ID, ComponentReadyTimeout, expected)
+		logger.Infof("Session %s: waiting up to %s for %d component(s) to be ready",
+			session.ID, ComponentReadyTimeout, expected)
 		waitForComponents(session, expected, ComponentReadyTimeout)
 	}
 
@@ -82,8 +78,6 @@ func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *na
 		return session.SetToRunning()
 	}
 
-	// Start the data stream server before the orchestrator so the Unix socket
-	// is ready by the time the first NATS messages are published.
 	ds := orchestrator.NewDataStreamServer(session, nc)
 	if err := ds.Start(context.Background()); err != nil {
 		return fmt.Errorf("session %s: data stream server: %w", session.ID, err)
@@ -119,7 +113,6 @@ func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *na
 		_ = session.SetToError()
 	}
 
-	// Store runtime resources in the service layer instead of core.Session
 	setSessionRuntime(session.ID, &sessionRuntime{
 		orchestrator: o,
 		dataStream:   ds,
@@ -134,8 +127,7 @@ func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *na
 }
 
 // waitForComponents polls the session registry until at least `expected`
-// components reach CONFIGURED state, or the timeout expires.
-// Either way StartSession continues — the timeout is best-effort.
+// components reach CONFIGURED or RUNNING state, or the timeout expires.
 func waitForComponents(session *core.Session, expected int, timeout time.Duration) {
 	deadline := time.Now().Add(timeout)
 	ticker := time.NewTicker(50 * time.Millisecond)
@@ -145,21 +137,20 @@ func waitForComponents(session *core.Session, expected int, timeout time.Duratio
 		<-ticker.C
 		configured := session.Registry.GetByState(component.ComponentStateConfigured)
 		running := session.Registry.GetByState(component.ComponentStateRunning)
-		ready := len(configured) + len(running)
-		if ready >= expected {
-			logger.Infof("Session %s: %d/%d component(s) ready", session.ID, ready, expected)
+		if len(configured)+len(running) >= expected {
+			logger.Infof("Session %s: %d/%d component(s) ready",
+				session.ID, len(configured)+len(running), expected)
 			return
 		}
 	}
 
 	configured := session.Registry.GetByState(component.ComponentStateConfigured)
 	running := session.Registry.GetByState(component.ComponentStateRunning)
-	ready := len(configured) + len(running)
 	logger.Warnf("Session %s: timeout after %s — %d/%d component(s) ready, starting orchestrator anyway",
-		session.ID, timeout, ready, expected)
+		session.ID, timeout, len(configured)+len(running), expected)
 }
 
-// StopSession stops the session, shuts down the orchestrator, and closes the data stream server.
+// StopSession stops the session, shuts down the orchestrator and data stream.
 func StopSession(session *core.Session, sessionStore *core.SessionStore) error {
 	if err := session.SetToStopping(); err != nil {
 		return err

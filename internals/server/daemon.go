@@ -10,7 +10,7 @@ import (
 	"github.com/eichiarakaki/aegis/internals/config"
 	"github.com/eichiarakaki/aegis/internals/core"
 	"github.com/eichiarakaki/aegis/internals/logger"
-	"github.com/eichiarakaki/aegis/internals/services/component"
+	servicescomponent "github.com/eichiarakaki/aegis/internals/services/component"
 	"github.com/eichiarakaki/aegis/internals/services/component/manager"
 	"github.com/nats-io/nats.go"
 )
@@ -27,15 +27,15 @@ func InitDaemon() {
 	aegisSocket := cfg.AegisCLISocket
 	componentsSocket := cfg.ComponentsSocket
 
-	// Session store is the single source of truth for sessions and their registries.
 	sessionStore := core.NewSessionStore()
 
-	// Connection pool and heartbeat monitor are shared across all component connections.
-	pool := component.NewConnectionPool()
-	monitor := component.NewComponentHeartbeatMonitor(sessionStore, pool)
+	pool := servicescomponent.NewConnectionPool()
+	monitor := servicescomponent.NewComponentHeartbeatMonitor(sessionStore, pool)
 	go monitor.Start()
 
-	// Clean up stale sockets from previous runs
+	// LogStore keeps the last 500 lines per component for backlog replay.
+	logStore := servicescomponent.NewLogStore(500)
+
 	for _, socket := range []string{aegisSocket, componentsSocket} {
 		if err := os.RemoveAll(socket); err != nil {
 			logger.Error("Failed to remove stale socket:", socket, err)
@@ -43,7 +43,6 @@ func InitDaemon() {
 		}
 	}
 
-	// Bind CLI socket
 	cliListener, err := net.Listen("unix", aegisSocket)
 	if err != nil {
 		logger.Error("Failed to bind CLI socket:", err)
@@ -52,7 +51,6 @@ func InitDaemon() {
 	defer cliListener.Close()
 	logger.Info("Aegis daemon listening on", aegisSocket)
 
-	// Bind components socket
 	componentsListener, err := net.Listen("unix", componentsSocket)
 	if err != nil {
 		logger.Error("Failed to bind components socket:", err)
@@ -61,11 +59,9 @@ func InitDaemon() {
 	defer componentsListener.Close()
 	logger.Info("Components server listening on", componentsSocket)
 
-	// Handle OS shutdown signals
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
-	// Creating NATS
 	nc, err := nats.Connect(nats.DefaultURL)
 	if err != nil {
 		logger.Error(err)
@@ -73,7 +69,6 @@ func InitDaemon() {
 	}
 	defer nc.Close()
 
-	// Accept CLI connections
 	go func() {
 		for {
 			conn, err := cliListener.Accept()
@@ -84,13 +79,10 @@ func InitDaemon() {
 				logger.Error("CLI connection error:", err)
 				continue
 			}
-			go HandleAegis(conn, sessionStore, nc)
+			go HandleAegis(conn, sessionStore, nc, logStore)
 		}
 	}()
 
-	// Accept component connections
-	// Each component must provide a valid session token in its REGISTER payload.
-	// The component is then registered into the registry of that specific session.
 	go func() {
 		for {
 			conn, err := componentsListener.Accept()
@@ -105,7 +97,6 @@ func InitDaemon() {
 		}
 	}()
 
-	// Block until shutdown signal
 	sig := <-quit
 	logger.Info("Received signal, shutting down:", sig)
 
