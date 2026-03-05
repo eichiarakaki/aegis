@@ -65,22 +65,25 @@ type Session struct {
 
 	Orchestrator *orchestrator.Orchestrator
 
+	ComponentPaths []string
+
 	mu sync.RWMutex
 }
 
 // NewSession creates a new session with the given name and mode.
 func NewSession(id string, name string, mode string) *Session {
 	return &Session{
-		ID:           id,
-		Name:         name,
-		Mode:         mode,
-		State:        SessionInitialized,
-		Registry:     component.NewComponentRegistry(),
-		StreamSocket: nil,
-		Topics:       nil,
-		TopicOwners:  make(map[string][]string),
-		Orchestrator: nil,
-		CreatedAt:    time.Now(),
+		ID:             id,
+		Name:           name,
+		Mode:           mode,
+		State:          SessionInitialized,
+		Registry:       component.NewComponentRegistry(),
+		StreamSocket:   nil,
+		Topics:         nil,
+		TopicOwners:    make(map[string][]string),
+		ComponentPaths: nil,
+		Orchestrator:   nil,
+		CreatedAt:      time.Now(),
 	}
 }
 
@@ -117,6 +120,27 @@ func (s *Session) AddTopics(componentID string, newTopics []string) {
 			}
 		}
 	}
+}
+
+// AddComponentPath appends a binary path if not already present.
+func (s *Session) AddComponentPath(path string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, p := range s.ComponentPaths {
+		if p == path {
+			return
+		}
+	}
+	s.ComponentPaths = append(s.ComponentPaths, path)
+}
+
+// GetComponentPaths returns a snapshot of the stored binary paths.
+func (s *Session) GetComponentPaths() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]string, len(s.ComponentPaths))
+	copy(out, s.ComponentPaths)
+	return out
 }
 
 // RemoveComponentTopics removes componentID as an owner of its topics.

@@ -3,7 +3,7 @@ package component
 import (
 	"time"
 
-	"github.com/eichiarakaki/aegis/internals/services/sessions/utils"
+	"github.com/eichiarakaki/aegis/internals/services/utils"
 )
 
 /* STANDARD ENVELOPE

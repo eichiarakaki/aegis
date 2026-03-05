@@ -8,16 +8,13 @@ import (
 
 	"github.com/eichiarakaki/aegis/internals/core/component"
 	"github.com/eichiarakaki/aegis/internals/logger"
-	"github.com/eichiarakaki/aegis/internals/services/sessions/utils"
+	"github.com/eichiarakaki/aegis/internals/services/utils"
 )
 
-// RegisteredResponse builds the LIFECYCLE/REGISTERED response sent after a
-// successful component registration.
 func RegisteredResponse(correlationID, componentID, sessionID string) (*component.Envelope, error) {
 	if componentID == "" || sessionID == "" {
 		return nil, fmt.Errorf("componentID and sessionID are required")
 	}
-
 	env := component.NewEnvelope(
 		component.MessageTypeLifecycle,
 		component.CommandRegistered,
@@ -33,7 +30,6 @@ func RegisteredResponse(correlationID, componentID, sessionID string) (*componen
 	return env, nil
 }
 
-// ConfigureResponse builds a CONFIG/CONFIGURE envelope addressed to a specific component.
 func ConfigureResponse(componentID, streamSocketPath string, topics []string) (*component.Envelope, error) {
 	if streamSocketPath == "" {
 		return nil, fmt.Errorf("streamSocketPath is required")
@@ -41,7 +37,6 @@ func ConfigureResponse(componentID, streamSocketPath string, topics []string) (*
 	if topics == nil {
 		topics = []string{}
 	}
-
 	env := component.NewEnvelope(
 		component.MessageTypeConfig,
 		component.CommandConfigure,
@@ -55,22 +50,18 @@ func ConfigureResponse(componentID, streamSocketPath string, topics []string) (*
 	return env, nil
 }
 
-// ACKResponse builds a CONTROL/ACK envelope correlated to the given message.
 func ACKResponse(correlationID string) (*component.Envelope, error) {
 	env := component.NewEnvelope(
 		component.MessageTypeControl,
 		component.CommandACK,
 		"aegis",
-		"component:unknown", // target is overridden by the caller's conn
-		map[string]interface{}{
-			"status": "ok",
-		},
+		"component:unknown",
+		map[string]interface{}{"status": "ok"},
 	)
 	env.WithCorrelation(correlationID)
 	return env, nil
 }
 
-// PongResponse builds a HEARTBEAT/PONG envelope correlated to a PING.
 func PongResponse(correlationID string, state component.ComponentState, uptimeSeconds int64) (*component.Envelope, error) {
 	env := component.NewEnvelope(
 		component.MessageTypeHeartbeat,
@@ -86,61 +77,30 @@ func PongResponse(correlationID string, state component.ComponentState, uptimeSe
 	return env, nil
 }
 
-func WaitForConfigACK(
-	conn net.Conn,
-	configureMessageID string,
-	logger *logger.Logger,
-) error {
-	if err := conn.SetReadDeadline(time.Now().Add(15 * time.Second)); err != nil {
-		return err
+func ErrorResponse(correlationID, code, message string, recoverable bool) (*component.Envelope, error) {
+	env := component.NewEnvelope(
+		component.MessageTypeError,
+		component.CommandRuntimeError,
+		"aegis",
+		"component:unknown",
+		map[string]any{
+			"code":        code,
+			"message":     message,
+			"recoverable": recoverable,
+		},
+	)
+	if correlationID != "" {
+		env.WithCorrelation(correlationID)
 	}
-	defer conn.SetReadDeadline(time.Time{})
-
-	logger.Debugf("Waiting for config ACK (correlating to message_id=%s)…", configureMessageID)
-
-	var envelope component.Envelope
-	if err := json.NewDecoder(conn).Decode(&envelope); err != nil {
-		return fmt.Errorf("failed to read ACK: %w", err)
-	}
-
-	if err := envelope.Validate(); err != nil {
-		return fmt.Errorf("invalid ACK envelope: %w", err)
-	}
-
-	if envelope.Command != component.CommandACK {
-		return fmt.Errorf(
-			"expected ACK for CONFIGURE, got type=%s command=%s",
-			envelope.Type, envelope.Command,
-		)
-	}
-
-	// CorrelationID is *string — dereference safely
-	if envelope.CorrelationID == nil || *envelope.CorrelationID != configureMessageID {
-		logger.Warnf(
-			"ACK correlation mismatch: expected=%s got=%v",
-			configureMessageID, envelope.CorrelationID,
-		)
-	}
-
-	logger.Debugf("Config ACK received")
-	return nil
+	return env, nil
 }
 
-// newMessageID is a convenience wrapper so response builders don't need to
-// import utils directly.
-func NewMessageID() string {
-	return utils.GenerateSecureToken()
-}
-
-// rfc3339Now returns the current UTC time formatted as RFC3339.
-func Rfc3339Now() string {
-	return time.Now().UTC().Format(time.RFC3339)
-}
-
-// waitForReady blocks until the component sends STATE_UPDATE(READY), ACKs it,
-// and updates the registry. Any other message type or state is rejected.
+// WaitForReady reads STATE_UPDATE(INITIALIZING) then STATE_UPDATE(READY),
+// ACKing each one. Uses the shared decoder to avoid consuming bytes from
+// the connection's internal buffer.
 func WaitForReady(
 	conn net.Conn,
+	dec *json.Decoder,
 	registry *component.ComponentRegistry,
 	comp *component.Component,
 	log *logger.Logger,
@@ -150,8 +110,6 @@ func WaitForReady(
 	}
 	defer conn.SetReadDeadline(time.Time{})
 
-	// The client walks REGISTERED → INITIALIZING → READY.
-	// We accept both state updates here, ACKing each one, before proceeding.
 	expected := []component.ComponentState{
 		component.ComponentStateInitializing,
 		component.ComponentStateReady,
@@ -161,10 +119,9 @@ func WaitForReady(
 		log.Debugf("Waiting for STATE_UPDATE(%s)…", expectedState)
 
 		var envelope component.Envelope
-		if err := json.NewDecoder(conn).Decode(&envelope); err != nil {
+		if err := dec.Decode(&envelope); err != nil {
 			return fmt.Errorf("failed to read STATE_UPDATE(%s): %w", expectedState, err)
 		}
-
 		if err := conn.SetReadDeadline(time.Now().Add(30 * time.Second)); err != nil {
 			return err
 		}
@@ -213,27 +170,51 @@ func WaitForReady(
 	return nil
 }
 
-// ErrorResponse builds an ERROR envelope with the given code and message.
-func ErrorResponse(correlationID, code, message string, recoverable bool) (*component.Envelope, error) {
-	env := component.NewEnvelope(
-		component.MessageTypeError,
-		component.CommandRuntimeError,
-		"aegis",
-		"component:unknown",
-		map[string]any{
-			"code":        code,
-			"message":     message,
-			"recoverable": recoverable,
-		},
-	)
-	if correlationID != "" {
-		env.WithCorrelation(correlationID)
+// WaitForConfigACK reads the ACK for the CONFIGURE message using the shared decoder.
+func WaitForConfigACK(
+	conn net.Conn,
+	dec *json.Decoder,
+	configureMessageID string,
+	logger *logger.Logger,
+) error {
+	if err := conn.SetReadDeadline(time.Now().Add(15 * time.Second)); err != nil {
+		return err
 	}
-	return env, nil
+	defer conn.SetReadDeadline(time.Time{})
+
+	logger.Debugf("Waiting for config ACK (correlating to message_id=%s)…", configureMessageID)
+
+	var envelope component.Envelope
+	if err := dec.Decode(&envelope); err != nil {
+		return fmt.Errorf("failed to read ACK: %w", err)
+	}
+
+	if err := envelope.Validate(); err != nil {
+		return fmt.Errorf("invalid ACK envelope: %w", err)
+	}
+
+	if envelope.Command != component.CommandACK {
+		return fmt.Errorf("expected ACK for CONFIGURE, got type=%s command=%s",
+			envelope.Type, envelope.Command)
+	}
+
+	if envelope.CorrelationID == nil || *envelope.CorrelationID != configureMessageID {
+		logger.Warnf("ACK correlation mismatch: expected=%s got=%v",
+			configureMessageID, envelope.CorrelationID)
+	}
+
+	logger.Debugf("Config ACK received")
+	return nil
 }
 
-// buildTopics derives the list of data-stream topic strings from the
-// component's declared capabilities.
+func NewMessageID() string {
+	return utils.GenerateSecureToken()
+}
+
+func Rfc3339Now() string {
+	return time.Now().UTC().Format(time.RFC3339)
+}
+
 func BuildTopics(caps component.ComponentCapabilities) []string {
 	timeframedStreams := map[string]bool{
 		"klines": true,

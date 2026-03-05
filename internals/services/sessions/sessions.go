@@ -3,6 +3,7 @@ package sessions
 import (
 	"context"
 	"net"
+	"time"
 
 	"github.com/eichiarakaki/aegis/internals/core"
 	"github.com/eichiarakaki/aegis/internals/core/component"
@@ -11,21 +12,34 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
-// StartSession starts the session and launches the data orchestrator.
-// nc is the shared NATS connection for the server instance.
+// ComponentReadyTimeout is the time StartSession waits for at least one
+// component to reach CONFIGURED state before starting the orchestrator.
+// This gives launched binaries time to connect, register, and complete
+// the handshake so their topics are populated in the session.
+var ComponentReadyTimeout = 2 * time.Second
+
+// StartSession starts the session: launches attached component binaries,
+// waits for them to complete the handshake, then starts the orchestrator.
 func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *nats.Conn) error {
 	if err := session.SetToStarting(); err != nil {
 		return err
 	}
 
-	if len(session.Registry.GetByState(component.ComponentStateRunning)) != len(session.Registry.List()) {
-		logger.Warn("Some components are not running.")
-	} else {
-		logger.Infof("All components ready to receive data at %s", *session.StreamSocket)
+	// Launch all binaries stored by SESSION_ATTACH.
+	if err := LaunchComponents(session); err != nil {
+		logger.Warnf("Session %s: component launch warning: %s", session.ID, err.Error())
+	}
+
+	paths := session.GetComponentPaths()
+	if len(paths) > 0 {
+		// Wait for components to connect, register, and reach CONFIGURED so
+		// their topics are added to the session before the orchestrator reads them.
+		logger.Infof("Session %s: waiting up to %s for components to be ready", session.ID, ComponentReadyTimeout)
+		waitForComponents(session, len(paths), ComponentReadyTimeout)
 	}
 
 	if session.Topics == nil || len(*session.Topics) == 0 {
-		logger.Warn("Session has no topics — orchestrator will not start.")
+		logger.Warn("Session has no topics — orchestrator will not start")
 		return session.SetToRunning()
 	}
 
@@ -33,14 +47,12 @@ func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *na
 		SessionID: session.ID,
 		Topics:    *session.Topics,
 		NC:        nc,
-		// DataRoot is read from AEGIS_DATA_ROOT env var inside New() if not set.
 	})
+
 	if err != nil {
 		return err
 	}
 
-	// Wire lifecycle callbacks so the session transitions automatically
-	// when the orchestrator finishes or hits a fatal error.
 	o.OnFinished = func() {
 		logger.Infof("Session %s: all data exhausted — transitioning to finished", session.ID)
 		if err := session.SetToStopping(); err != nil {
@@ -67,6 +79,32 @@ func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *na
 	}
 
 	return session.SetToRunning()
+}
+
+// waitForComponents polls the session registry until at least `expected`
+// components reach CONFIGURED state, or the timeout expires.
+// Either way StartSession continues — the timeout is best-effort.
+func waitForComponents(session *core.Session, expected int, timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+
+	for time.Now().Before(deadline) {
+		<-ticker.C
+		configured := session.Registry.GetByState(component.ComponentStateConfigured)
+		running := session.Registry.GetByState(component.ComponentStateRunning)
+		ready := len(configured) + len(running)
+		if ready >= expected {
+			logger.Infof("Session %s: %d/%d component(s) ready", session.ID, ready, expected)
+			return
+		}
+	}
+
+	configured := session.Registry.GetByState(component.ComponentStateConfigured)
+	running := session.Registry.GetByState(component.ComponentStateRunning)
+	ready := len(configured) + len(running)
+	logger.Warnf("Session %s: timeout after %s — %d/%d component(s) ready, starting orchestrator anyway",
+		session.ID, timeout, ready, expected)
 }
 
 // StopSession stops the session and shuts down the orchestrator.

@@ -5,11 +5,9 @@ import (
 	"os"
 
 	"github.com/eichiarakaki/aegis/internals/core"
-	"github.com/eichiarakaki/aegis/internals/core/component"
-	"github.com/eichiarakaki/aegis/internals/services/sessions/utils"
 )
 
-// verifyComponent validates if the executable exists and is executable.
+// verifyComponent validates that the path exists and is executable.
 func verifyComponent(path string) error {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -18,48 +16,36 @@ func verifyComponent(path string) error {
 		}
 		return fmt.Errorf("failed to access executable: %w", err)
 	}
-
 	if info.IsDir() {
 		return fmt.Errorf("path is a directory, not an executable: %s", path)
 	}
-
 	if (info.Mode() & 0111) == 0 {
 		return fmt.Errorf("file is not executable: %s", path)
 	}
-
 	return nil
 }
 
-func AttachComponents(session *core.Session, paths []string) ([]component.Component, error) {
-
+// AttachComponents validates the given paths and stores them in the session.
+// The binaries are NOT launched here — that happens in StartSession so the
+// operator can attach components incrementally and start everything at once.
+func AttachComponents(session *core.Session, paths []string) ([]string, error) {
 	currentState := session.GetState()
 	if currentState != core.SessionInitialized && currentState != core.SessionStopped {
-		return nil, fmt.Errorf("session is not initialized or stopped: %s", core.SessionStateToString(session.GetState()))
+		return nil, fmt.Errorf(
+			"cannot attach components: session must be INITIALIZED or STOPPED, got %s",
+			core.SessionStateToString(currentState),
+		)
 	}
 
-	var validComponents []string
-	var invalidComponents []string
 	for _, path := range paths {
-		err := verifyComponent(path)
-		if err != nil {
-			invalidComponents = append(invalidComponents, path)
-			continue
-		}
-		validComponents = append(validComponents, path)
-	}
-
-	var components []component.Component
-	for range validComponents {
-		newID, err := utils.GenerateUUID()
-		if err != nil {
+		if err := verifyComponent(path); err != nil {
 			return nil, err
 		}
-
-		components = append(components, component.Component{
-			ID:    newID,
-			State: component.ComponentStateInit,
-		})
 	}
 
-	return components, nil
+	for _, path := range paths {
+		session.AddComponentPath(path)
+	}
+
+	return paths, nil
 }

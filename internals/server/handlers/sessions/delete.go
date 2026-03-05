@@ -8,7 +8,7 @@ import (
 	"github.com/eichiarakaki/aegis/internals/core"
 	"github.com/eichiarakaki/aegis/internals/logger"
 	services_sessions "github.com/eichiarakaki/aegis/internals/services/sessions"
-	"github.com/eichiarakaki/aegis/internals/services/sessions/utils"
+	"github.com/eichiarakaki/aegis/internals/services/utils"
 )
 
 // HandleSessionDelete processes SESSION_DELETE commands.

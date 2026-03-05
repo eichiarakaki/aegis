@@ -19,6 +19,14 @@ func GenerateUUID() (string, error) {
 	return id.String(), nil
 }
 
+func GenerateComponentID() string {
+	return "cmp-" + uuid.New().String()[:8]
+}
+
+func GenerateSessionID() string {
+	return "sess-" + uuid.New().String()[:8]
+}
+
 func GenerateSHA1(data string) string {
 	h := sha1.New()
 	h.Write([]byte(data))
