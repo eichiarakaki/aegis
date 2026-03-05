@@ -5,6 +5,8 @@ import (
 	"net"
 	"time"
 
+	"fmt"
+
 	"github.com/eichiarakaki/aegis/internals/core"
 	"github.com/eichiarakaki/aegis/internals/core/component"
 	"github.com/eichiarakaki/aegis/internals/logger"
@@ -30,12 +32,18 @@ func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *na
 		logger.Warnf("Session %s: component launch warning: %s", session.ID, err.Error())
 	}
 
+	// Wait for components to be ready before starting the orchestrator so their
+	// topics are populated. Use whichever count is higher: attached paths (not yet
+	// connected) or components already registered in the registry (connected manually).
 	paths := session.GetComponentPaths()
-	if len(paths) > 0 {
-		// Wait for components to connect, register, and reach CONFIGURED so
-		// their topics are added to the session before the orchestrator reads them.
-		logger.Infof("Session %s: waiting up to %s for components to be ready", session.ID, ComponentReadyTimeout)
-		waitForComponents(session, len(paths), ComponentReadyTimeout)
+	registered := session.Registry.Count()
+	expected := len(paths)
+	if registered > expected {
+		expected = registered
+	}
+	if expected > 0 {
+		logger.Infof("Session %s: waiting up to %s for %d component(s) to be ready", session.ID, ComponentReadyTimeout, expected)
+		waitForComponents(session, expected, ComponentReadyTimeout)
 	}
 
 	if session.Topics == nil || len(*session.Topics) == 0 {
@@ -43,14 +51,22 @@ func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *na
 		return session.SetToRunning()
 	}
 
+	// Start the data stream server before the orchestrator so the Unix socket
+	// is ready by the time the first NATS messages are published.
+	ds := core.NewDataStreamServer(session, nc)
+	if err := ds.Start(context.Background()); err != nil {
+		return fmt.Errorf("session %s: data stream server: %w", session.ID, err)
+	}
+	session.DataStream = ds
+
 	o, err := orchestrator.New(orchestrator.Config{
 		SessionID: session.ID,
 		Topics:    *session.Topics,
 		NC:        nc,
 	})
-
 	if err != nil {
-		return err
+		ds.Stop()
+		return fmt.Errorf("session %s: orchestrator: %w", session.ID, err)
 	}
 
 	o.OnFinished = func() {
@@ -75,6 +91,7 @@ func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *na
 	session.Orchestrator = o
 
 	if err := o.Start(context.Background()); err != nil {
+		ds.Stop()
 		return err
 	}
 
@@ -107,7 +124,7 @@ func waitForComponents(session *core.Session, expected int, timeout time.Duratio
 		session.ID, timeout, ready, expected)
 }
 
-// StopSession stops the session and shuts down the orchestrator.
+// StopSession stops the session, shuts down the orchestrator, and closes the data stream server.
 func StopSession(session *core.Session, sessionStore *core.SessionStore) error {
 	if err := session.SetToStopping(); err != nil {
 		return err
@@ -116,6 +133,11 @@ func StopSession(session *core.Session, sessionStore *core.SessionStore) error {
 	if session.Orchestrator != nil {
 		session.Orchestrator.Stop()
 		session.Orchestrator = nil
+	}
+
+	if session.DataStream != nil {
+		session.DataStream.Stop()
+		session.DataStream = nil
 	}
 
 	return session.SetToStopped()

@@ -33,13 +33,13 @@ func SessionStateToString(state SessionStateType) string {
 	case SessionStopping:
 		return "STOPPING"
 	case SessionStopped:
-		return "STOOPED"
+		return "STOPPED"
 	case SessionFinished:
 		return "FINISHED"
 	case SessionError:
 		return "ERROR"
 	default:
-		return "UNKNOW"
+		return "UNKNOWN"
 	}
 }
 
@@ -63,9 +63,10 @@ type Session struct {
 	// other component still owns them.
 	TopicOwners map[string][]string
 
-	Orchestrator *orchestrator.Orchestrator
-
 	ComponentPaths []string
+
+	Orchestrator *orchestrator.Orchestrator
+	DataStream   *DataStreamServer
 
 	mu sync.RWMutex
 }
@@ -82,8 +83,9 @@ func NewSession(id string, name string, mode string) *Session {
 		Topics:         nil,
 		TopicOwners:    make(map[string][]string),
 		ComponentPaths: nil,
-		Orchestrator:   nil,
 		CreatedAt:      time.Now(),
+		Orchestrator:   nil,
+		DataStream:     nil,
 	}
 }
 
@@ -126,6 +128,7 @@ func (s *Session) AddTopics(componentID string, newTopics []string) {
 func (s *Session) AddComponentPath(path string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	for _, p := range s.ComponentPaths {
 		if p == path {
 			return
@@ -138,6 +141,7 @@ func (s *Session) AddComponentPath(path string) {
 func (s *Session) GetComponentPaths() []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
 	out := make([]string, len(s.ComponentPaths))
 	copy(out, s.ComponentPaths)
 	return out
@@ -181,7 +185,6 @@ func (s *Session) RemoveComponentTopics(componentID string, componentTopics []st
 
 // GetUptimeSeconds calculates and returns the uptime in seconds.
 // Returns 0 if the session has not started yet.
-// If the session is running or was stopped, returns the duration between StartedAt and StoppedAt (or now).
 func (s *Session) GetUptimeSeconds() int64 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -212,10 +215,10 @@ func (s *Session) SetToRunning() error {
 	return nil
 }
 
-// GetStreamSocketPath just returns the StreamSocket.
+// GetStreamSocketPath returns the stream socket path if set.
 func (s *Session) GetStreamSocketPath() string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	if s.StreamSocket != nil {
 		return *s.StreamSocket
@@ -264,7 +267,7 @@ func (s *Session) SetToStopped() error {
 
 	now := time.Now()
 	s.State = SessionStopped
-	s.StartedAt = &now
+	s.StoppedAt = &now
 	return nil
 }
 
@@ -274,31 +277,29 @@ func (s *Session) SetToFinished() error {
 	defer s.mu.Unlock()
 
 	if !IsValidSessionStateTransition(s.State, SessionFinished) {
-		return errors.New("session cannot transition to stopped from current state")
+		return errors.New("session cannot transition to finished from current state")
 	}
 
 	now := time.Now()
 	s.State = SessionFinished
-	s.StartedAt = &now
+	s.StoppedAt = &now
 	return nil
 }
 
-// SetToError transitions the session from any to SessionError.
+// SetToError transitions the session to SessionError state.
 func (s *Session) SetToError() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if !IsValidSessionStateTransition(s.State, SessionError) {
-		return errors.New("session cannot transition to stopped from current state")
+		return errors.New("invalid transition to error state")
 	}
 
-	now := time.Now()
 	s.State = SessionError
-	s.StartedAt = &now
 	return nil
 }
 
-// AddComponent adds a component to the session.
+// AddComponent adds a component to the session's registry.
 func (s *Session) AddComponent(c *component.Component) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -319,6 +320,25 @@ func (s *Session) GetState() SessionStateType {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.State
+}
+
+// GetTopicOwnersSnapshot returns a safe, deep copy of the TopicOwners map.
+// Use this method when DataStreamServer or other readers need concurrent-safe access.
+func (s *Session) GetTopicOwnersSnapshot() map[string][]string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.TopicOwners == nil {
+		return make(map[string][]string)
+	}
+
+	copyMap := make(map[string][]string, len(s.TopicOwners))
+	for topic, owners := range s.TopicOwners {
+		ownersCopy := make([]string, len(owners))
+		copy(ownersCopy, owners)
+		copyMap[topic] = ownersCopy
+	}
+	return copyMap
 }
 
 // ---------- helpers ----------
@@ -358,9 +378,10 @@ func NewSessionStore() *SessionStore {
 func (store *SessionStore) AddSession(s *Session) error {
 	store.mu.Lock()
 	defer store.mu.Unlock()
+
 	_, exists := store.sessions[s.ID]
 	if exists {
-		return fmt.Errorf("session with the same ID already exists")
+		return fmt.Errorf("session with ID %s already exists", s.ID)
 	}
 	store.sessions[s.ID] = s
 	return nil
@@ -369,6 +390,7 @@ func (store *SessionStore) AddSession(s *Session) error {
 func (store *SessionStore) GetSessionByID(id string) (*Session, bool) {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
+
 	s, exists := store.sessions[id]
 	return s, exists
 }
@@ -376,6 +398,7 @@ func (store *SessionStore) GetSessionByID(id string) (*Session, bool) {
 func (store *SessionStore) GetSessionByName(name string) (*Session, bool) {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
+
 	for _, s := range store.sessions {
 		if s.Name == name {
 			return s, true
@@ -387,6 +410,7 @@ func (store *SessionStore) GetSessionByName(name string) (*Session, bool) {
 func (store *SessionStore) GetSessionsByName(name string) ([]*Session, int) {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
+
 	var sessions []*Session
 	count := 0
 	for _, s := range store.sessions {
@@ -395,15 +419,13 @@ func (store *SessionStore) GetSessionsByName(name string) ([]*Session, int) {
 			count++
 		}
 	}
-	if len(sessions) >= 1 {
-		return sessions, count
-	}
-	return nil, 0
+	return sessions, count
 }
 
 func (store *SessionStore) GetSessionsByMode(mode string) []*Session {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
+
 	var sessions []*Session
 	for _, s := range store.sessions {
 		if s.Mode == mode {
@@ -416,6 +438,7 @@ func (store *SessionStore) GetSessionsByMode(mode string) []*Session {
 func (store *SessionStore) GetSessionsByStatus(state SessionStateType) []*Session {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
+
 	var sessions []*Session
 	for _, s := range store.sessions {
 		if s.GetState() == state {
@@ -428,6 +451,7 @@ func (store *SessionStore) GetSessionsByStatus(state SessionStateType) []*Sessio
 func (store *SessionStore) IsTokenInSessionStore(token string) bool {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
+
 	for _, session := range store.sessions {
 		if session.ID == token {
 			return true
@@ -444,12 +468,14 @@ func (store *SessionStore) GetSessionByIDApproximation(approximation string) (*S
 	store.mu.RLock()
 	defer store.mu.RUnlock()
 
+	// Exact match first
 	for _, session := range store.sessions {
 		if session.ID == approximation {
 			return session, true
 		}
 	}
 
+	// Prefix approximation
 	maxIDLength := 0
 	for _, session := range store.sessions {
 		if len(session.ID) > maxIDLength {
@@ -478,7 +504,6 @@ func (store *SessionStore) GetSessionByIDApproximation(approximation string) (*S
 		if matches == 1 {
 			return matchedSession, true
 		}
-
 		if matches > 1 {
 			return nil, false
 		}
@@ -490,6 +515,7 @@ func (store *SessionStore) GetSessionByIDApproximation(approximation string) (*S
 func (store *SessionStore) ListSessions() []*Session {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
+
 	sessions := make([]*Session, 0, len(store.sessions))
 	for _, s := range store.sessions {
 		sessions = append(sessions, s)
@@ -512,6 +538,7 @@ func (store *SessionStore) Count() int {
 func (store *SessionStore) CountByState(state SessionStateType) int {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
+
 	count := 0
 	for _, session := range store.sessions {
 		if session.State == state {
@@ -524,6 +551,7 @@ func (store *SessionStore) CountByState(state SessionStateType) int {
 func (store *SessionStore) TotalComponents() int {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
+
 	count := 0
 	for _, session := range store.sessions {
 		if session.Registry == nil {
@@ -537,6 +565,7 @@ func (store *SessionStore) TotalComponents() int {
 func (store *SessionStore) TotalComponentsByStateFromAllSessions(state component.ComponentState) int {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
+
 	count := 0
 	for _, session := range store.sessions {
 		if session.Registry == nil {

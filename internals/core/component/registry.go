@@ -69,6 +69,14 @@ func (r *ComponentRegistry) List() []*Component {
 	return components
 }
 
+// Counts the amount of registered.
+func (r *ComponentRegistry) Count() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	return len(r.components)
+}
+
 // GetByName retrieves a component by name and session.
 func (r *ComponentRegistry) GetByName(sessionID, componentName string) (*Component, bool) {
 	r.mu.RLock()
