@@ -5,21 +5,20 @@ import (
 	"time"
 )
 
-// Component represents a component in Aegis
+// Component represents a registered component in Aegis.
 type Component struct {
-	ID           string
-	SessionID    string
-	Name         string
-	Version      string
-	State        ForeignComponentState
-	Capabilities ComponentCapabilities
+	ID           string                `json:"id"`
+	SessionID    string                `json:"session_id"`
+	Name         string                `json:"name"`
+	Version      string                `json:"version"`
+	State        ForeignComponentState `json:"state"`
+	Capabilities ComponentCapabilities `json:"capabilities"`
 
-	StartedAt     time.Time
-	LastHeartbeat time.Time
-	mu            sync.RWMutex
+	StartedAt     time.Time    `json:"started_at"`
+	LastHeartbeat time.Time    `json:"last_heartbeat"`
+	mu            sync.RWMutex `json:"-"`
 }
 
-// isValidStateTransition validates if a state transition is allowed
 func isValidStateTransition(from, to ForeignComponentState) bool {
 	validTransitions := map[ForeignComponentState][]ForeignComponentState{
 		ComponentStateInit:         {ComponentStateRegistered},
@@ -38,12 +37,10 @@ func isValidStateTransition(from, to ForeignComponentState) bool {
 	if !exists {
 		return false
 	}
-
 	for _, state := range allowed {
 		if state == to {
 			return true
 		}
 	}
-
 	return false
 }

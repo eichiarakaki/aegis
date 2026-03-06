@@ -77,6 +77,7 @@ func HandleAegis(conn net.Conn, sessionStore *core.SessionStore, nc *nats.Conn, 
 
 	case core.CommandComponentLogs:
 		component.HandleComponentLogs(cmd, conn, sessionStore, nc, logStore)
+
 	case core.CommandComponentLogPath:
 		component.HandleComponentLogPath(cmd, conn, sessionStore)
 

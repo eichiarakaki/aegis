@@ -1,15 +1,36 @@
 package component
 
-import "github.com/eichiarakaki/aegis/internals/core"
+import (
+	"time"
 
-// Get will display all the properties correctly only if it's connected to the aegis-component.sock
-func Get(session *core.Session, componentID string) (map[string]any, error) {
-	// TODO: Fix this shii
+	"github.com/eichiarakaki/aegis/internals/core"
+)
 
-	data := map[string]any{
-		"session_id": session.ID,
-		"components": session.Registry.List(),
+// Get returns detailed info for a single component.
+// ref can be an exact ID, exact name, ID prefix, or name prefix/substring.
+// If ref is empty and the session has exactly one component, it is used automatically.
+func Get(session *core.Session, ref string) (core.ComponentGetData, error) {
+	c, err := resolveComponent(session, ref)
+	if err != nil {
+		return core.ComponentGetData{SessionID: session.ID}, err
 	}
 
-	return data, nil
+	var uptime int64
+	if !c.StartedAt.IsZero() {
+		uptime = int64(time.Since(c.StartedAt).Seconds())
+	}
+
+	return core.ComponentGetData{
+		SessionID: session.ID,
+		Component: core.ComponentDetail{
+			ID:                  c.ID,
+			Name:                c.Name,
+			State:               string(c.State),
+			Requires:            requiresMap(c.Capabilities.RequiresStreams),
+			SupportedSymbols:    c.Capabilities.SupportedSymbols,
+			SupportedTimeframes: c.Capabilities.SupportedTimeframes,
+			StartedAt:           c.StartedAt,
+			UptimeSeconds:       uptime,
+		},
+	}, nil
 }
