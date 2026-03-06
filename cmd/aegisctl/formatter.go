@@ -9,36 +9,19 @@ import (
 	"github.com/eichiarakaki/aegis/internals/core"
 )
 
-// ANSI — minimal palette: bold, dim, green, red, yellow.
 const (
-	ansiReset  = "\033[0m"
-	ansiBold   = "\033[1m"
-	ansiDim    = "\033[2m"
-	ansiGreen  = "\033[32m"
-	ansiYellow = "\033[33m"
-	ansiRed    = "\033[31m"
+	ansiReset = "\033[0m"
+	ansiBold  = "\033[1m"
+	ansiDim   = "\033[2m"
+	ansiGreen = "\033[32m"
+	ansiRed   = "\033[31m"
 )
 
-func bold(s string) string   { return ansiBold + s + ansiReset }
-func dim(s string) string    { return ansiDim + s + ansiReset }
-func green(s string) string  { return ansiGreen + s + ansiReset }
-func yellow(s string) string { return ansiYellow + s + ansiReset }
-func red(s string) string    { return ansiRed + s + ansiReset }
+func bold(s string) string  { return ansiBold + s + ansiReset }
+func dim(s string) string   { return ansiDim + s + ansiReset }
+func green(s string) string { return ansiGreen + s + ansiReset }
+func red(s string) string   { return ansiRed + s + ansiReset }
 
-func colorState(s string) string {
-	switch strings.ToUpper(s) {
-	case "RUNNING":
-		return green(s)
-	case "STOPPED", "STOPPING", "ERROR":
-		return red(s)
-	case "INITIALIZED":
-		return yellow(s)
-	default:
-		return s
-	}
-}
-
-// prettyPrint is the single entry point called by sendCommand.
 func prettyPrint(resp map[string]any) {
 	status, _ := resp["status"].(string)
 	cmdRaw, _ := resp["command"].(string)
@@ -46,244 +29,230 @@ func prettyPrint(resp map[string]any) {
 	errCode, _ := resp["error_code"].(string)
 	data, _ := resp["data"].(map[string]any)
 
-	isErr := strings.ToUpper(status) != "OK"
+	fmt.Println()
 
-	// ── Error path ───────────────────────────────────────────────────────────
-	if isErr {
-		fmt.Printf("\n%s  %s\n", red("ERR"), bold(cmdRaw))
+	if strings.ToUpper(status) != "OK" {
+		fmt.Printf("%s %s\n", red("[FAIL]"), bold(cmdRaw))
 		if errCode != "" {
-			fmt.Printf("    code     %s\n", yellow(errCode))
+			fmt.Printf("  error   : %s\n", errCode)
 		}
 		if message != "" {
-			fmt.Printf("    message  %s\n", message)
+			fmt.Printf("  message : %s\n", message)
 		}
 		fmt.Println()
 		return
 	}
 
-	// ── Command dispatch ─────────────────────────────────────────────────────
 	cmd := core.CLICommandType(cmdRaw)
 	switch cmd {
 	case core.CommandSessionCreate:
-		renderSessionCreate(data, message)
+		renderSessionCreate(data)
 	case core.CommandSessionAttach:
-		renderSessionAttach(data, message)
+		renderSessionAttach(data)
 	case core.CommandSessionStart:
-		renderSessionStart(data, message)
+		renderSessionStart(data)
 	case core.CommandSessionStop:
-		renderSessionStop(data, message)
+		renderSessionStop(data)
 	case core.CommandSessionList:
 		renderSessionList(data)
 	case core.CommandSessionState:
 		renderSessionState(data)
 	case core.CommandSessionDelete:
-		renderOK(cmdRaw, message)
+		renderSessionDelete(data, message)
 	case core.CommandComponentList:
-		renderComponentList(data, message)
+		renderComponentList(data)
 	case core.CommandComponentGet, core.CommandComponentDescribe:
-		renderComponentDetail(data, message)
+		renderComponentDetail(data)
 	case core.CommandHealthCheck, core.CommandHealthCheckSession, core.CommandHealthCheckComp:
 		renderHealth(data, message)
-	case core.CommandDaemonShutdown, core.CommandDaemonKill:
-		renderOK(cmdRaw, message)
 	default:
 		renderFallback(cmdRaw, message, data)
 	}
+
+	fmt.Println()
 }
 
 // ── Renderers ─────────────────────────────────────────────────────────────────
 
-func renderSessionCreate(data map[string]any, msg string) {
+func renderSessionCreate(data map[string]any) {
 	sess, _ := data["session"].(map[string]any)
-	fmt.Printf("\n%s  session created\n", green("OK"))
 	if sess == nil {
-		printMsg(msg)
 		return
 	}
-	row("id", str(sess["id"]))
-	row("name", bold(str(sess["name"])))
-	row("mode", str(sess["mode"]))
-	row("state", colorState(str(sess["state"])))
-	row("created", fmtTime(str(sess["created_at"])))
-	fmt.Println()
+	fmt.Printf("%s session %q created\n", green("[OK]"), str(sess["name"]))
+	fmt.Printf("  id      : %s\n", str(sess["id"]))
+	fmt.Printf("  mode    : %s\n", str(sess["mode"]))
+	fmt.Printf("  state   : %s\n", str(sess["state"]))
 }
 
-func renderSessionAttach(data map[string]any, msg string) {
-	fmt.Printf("\n%s  session attach\n", green("OK"))
-	row("session", str(data["session_id"]))
-	if paths, ok := data["attached_components"].([]any); ok {
-		row("components", fmt.Sprintf("%d attached", len(paths)))
-		for _, p := range paths {
-			fmt.Printf("             %s\n", dim(str(p)))
+func renderSessionAttach(data map[string]any) {
+	paths, _ := data["attached_components"].([]any)
+	fmt.Printf("%s %d component(s) attached to session %s\n",
+		green("[OK]"), len(paths), str(data["session_id"]))
+	for _, p := range paths {
+		fmt.Printf("  + %s\n", str(p))
+	}
+}
+
+func renderSessionStart(data map[string]any) {
+	fmt.Printf("%s session %s is now %s\n",
+		green("[OK]"), str(data["session_id"]), bold(str(data["current_state"])))
+	fmt.Printf("  started : %s\n", fmtTime(str(data["started_at"])))
+
+	comps, _ := data["components"].([]any)
+	if len(comps) == 0 {
+		return
+	}
+	fmt.Printf("  components (%d):\n", len(comps))
+	for _, c := range comps {
+		cm, ok := c.(map[string]any)
+		if !ok {
+			continue
+		}
+		name := str(firstOf(cm, "Name", "name"))
+		id := str(firstOf(cm, "ID", "id"))
+		state := str(firstOf(cm, "State", "state"))
+		ver := str(firstOf(cm, "Version", "version"))
+		fmt.Printf("    [%s] %s (%s) v%s\n", state, name, id, ver)
+
+		if caps, ok := cm["Capabilities"].(map[string]any); ok {
+			if streams, ok := caps["requires_streams"].([]any); ok {
+				fmt.Printf("      streams    : %s\n", joinAny(streams))
+			}
+			if symbols, ok := caps["supported_symbols"].([]any); ok {
+				fmt.Printf("      symbols    : %s\n", joinAny(symbols))
+			}
+			if tframes, ok := caps["supported_timeframes"].([]any); ok {
+				fmt.Printf("      timeframes : %s\n", joinAny(tframes))
+			}
 		}
 	}
-	fmt.Println()
 }
 
-func renderSessionStart(data map[string]any, _ string) {
-	fmt.Printf("\n%s  session start\n", green("OK"))
-	row("session", str(data["session_id"]))
-	row("state", colorState(str(data["current_state"])))
-	row("started", fmtTime(str(data["started_at"])))
-
-	if comps, ok := data["components"].([]any); ok && len(comps) > 0 {
-		fmt.Printf("\n    %-24s %-14s %s\n",
-			dim("COMPONENT"), dim("STATE"), dim("VERSION"))
-		fmt.Printf("    %s\n", strings.Repeat("─", 46))
-		for _, c := range comps {
-			printCompRow(c)
-		}
-	}
-	fmt.Println()
-}
-
-func renderSessionStop(data map[string]any, _ string) {
-	fmt.Printf("\n%s  session stop\n", green("OK"))
-	row("session", str(data["session_id"]))
-	row("state", colorState(str(data["current_state"])))
+func renderSessionStop(data map[string]any) {
+	fmt.Printf("%s session %s is now %s\n",
+		green("[OK]"), str(data["session_id"]), bold(str(data["current_state"])))
 	if s := str(data["stopped_at"]); s != "" {
-		row("stopped", fmtTime(s))
+		fmt.Printf("  stopped : %s\n", fmtTime(s))
 	}
-	fmt.Println()
 }
 
 func renderSessionList(data map[string]any) {
 	if len(data) == 0 {
-		fmt.Printf("\n%s  no sessions\n\n", dim("--"))
+		fmt.Println("no sessions found")
 		return
 	}
-
-	fmt.Printf("\n    %-14s %-18s %-12s %-12s %s\n",
-		dim("ID"), dim("NAME"), dim("MODE"), dim("STATE"), dim("STARTED"))
-	fmt.Printf("    %s\n", strings.Repeat("─", 70))
-
+	fmt.Printf("%d session(s):\n", len(data))
 	for _, v := range data {
 		sess, ok := v.(map[string]any)
 		if !ok {
 			continue
 		}
-		fmt.Printf("    %-14s %-18s %-12s %-12s %s\n",
-			str(sess["id"]),
+		fmt.Printf("\n  [%s] %s (%s)  mode=%s\n",
+			str(sess["state"]),
 			bold(str(sess["name"])),
+			str(sess["id"]),
 			str(sess["mode"]),
-			colorState(str(sess["state"])),
-			dim(fmtTimeShort(str(sess["started_at"]))),
 		)
-		if comps, ok := sess["components"].([]any); ok {
+		if s := str(sess["started_at"]); s != "" {
+			fmt.Printf("    started : %s\n", fmtTime(s))
+		}
+		if topics, ok := sess["topics"].([]any); ok && len(topics) > 0 {
+			fmt.Printf("    topics  : %s\n", joinAny(topics))
+		}
+		if comps, ok := sess["components"].([]any); ok && len(comps) > 0 {
+			fmt.Printf("    components (%d):\n", len(comps))
 			for _, c := range comps {
 				cm, ok := c.(map[string]any)
 				if !ok {
 					continue
 				}
-				fmt.Printf("    %s %-12s %-16s %s\n",
-					dim("  └"),
-					dim(str(firstOf(cm, "ID", "id"))),
-					dim(str(firstOf(cm, "Name", "name"))),
-					colorState(str(firstOf(cm, "State", "state"))),
+				fmt.Printf("      [%s] %s (%s)\n",
+					str(firstOf(cm, "State", "state")),
+					str(firstOf(cm, "Name", "name")),
+					str(firstOf(cm, "ID", "id")),
 				)
 			}
 		}
 	}
-	fmt.Println()
 }
 
 func renderSessionState(data map[string]any) {
-	fmt.Printf("\n%s  session state\n", green("OK"))
-	row("session", str(data["session_id"]))
-	row("state", colorState(str(data["state"])))
-	fmt.Println()
+	fmt.Printf("%s session %s  state=%s\n",
+		green("[OK]"), str(data["session_id"]), bold(str(data["state"])))
 }
 
-func renderComponentList(data map[string]any, _ string) {
+func renderSessionDelete(data map[string]any, msg string) {
+	fmt.Printf("%s session deleted\n", green("[OK]"))
+	if msg != "" {
+		fmt.Printf("  %s\n", msg)
+	}
+}
+
+func renderComponentList(data map[string]any) {
 	list, _ := data["components"].([]any)
 	if len(list) == 0 {
-		fmt.Printf("\n%s  no components\n\n", dim("--"))
+		fmt.Println("no components found")
 		return
 	}
-	fmt.Printf("\n    %-14s %-20s %-12s %s\n",
-		dim("ID"), dim("NAME"), dim("STATE"), dim("VERSION"))
-	fmt.Printf("    %s\n", strings.Repeat("─", 54))
+	fmt.Printf("%d component(s):\n", len(list))
 	for _, c := range list {
-		printCompRow(c)
+		cm, ok := c.(map[string]any)
+		if !ok {
+			continue
+		}
+		fmt.Printf("  [%s] %s (%s) v%s\n",
+			str(firstOf(cm, "State", "state")),
+			str(firstOf(cm, "Name", "name")),
+			str(firstOf(cm, "ID", "id")),
+			str(firstOf(cm, "Version", "version")),
+		)
 	}
-	fmt.Println()
 }
 
-func renderComponentDetail(data map[string]any, msg string) {
-	fmt.Printf("\n%s  component\n", green("OK"))
-	printMsg(msg)
-	printKVMap(data, "    ")
-	fmt.Println()
+func renderComponentDetail(data map[string]any) {
+	printKVMap(data, "  ")
 }
 
 func renderHealth(data map[string]any, msg string) {
-	fmt.Printf("\n%s  health\n", green("OK"))
-	printMsg(msg)
-	printKVMap(data, "    ")
-	fmt.Println()
-}
-
-func renderOK(cmd, msg string) {
-	fmt.Printf("\n%s  %s\n", green("OK"), strings.ToLower(strings.ReplaceAll(cmd, "_", " ")))
-	printMsg(msg)
-	fmt.Println()
+	fmt.Printf("%s health check\n", green("[OK]"))
+	if msg != "" {
+		fmt.Printf("  %s\n", msg)
+	}
+	printKVMap(data, "  ")
 }
 
 func renderFallback(cmd, msg string, data map[string]any) {
-	fmt.Printf("\n%s  %s\n", green("OK"), strings.ToLower(strings.ReplaceAll(cmd, "_", " ")))
-	printMsg(msg)
-	if len(data) > 0 {
-		printKVMap(data, "    ")
-	}
-	fmt.Println()
-}
-
-// ── Shared helpers ────────────────────────────────────────────────────────────
-
-func printCompRow(raw any) {
-	c, ok := raw.(map[string]any)
-	if !ok {
-		return
-	}
-	id := str(firstOf(c, "ID", "id"))
-	name := str(firstOf(c, "Name", "name"))
-	state := str(firstOf(c, "State", "state"))
-	version := str(firstOf(c, "Version", "version"))
-	fmt.Printf("    %-14s %-20s %-12s %s\n", dim(id), name, colorState(state), dim(version))
-}
-
-func row(key, val string) {
-	fmt.Printf("    %-10s %s\n", dim(key), val)
-}
-
-func printMsg(msg string) {
+	fmt.Printf("%s %s\n", green("[OK]"), cmd)
 	if msg != "" {
-		fmt.Printf("    %s\n", dim(msg))
+		fmt.Printf("  %s\n", msg)
 	}
+	printKVMap(data, "  ")
 }
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 func printKVMap(m map[string]any, indent string) {
 	for k, v := range m {
 		switch vv := v.(type) {
 		case map[string]any:
-			fmt.Printf("%s%s\n", indent, dim(k))
+			fmt.Printf("%s%s:\n", indent, k)
 			printKVMap(vv, indent+"  ")
 		case []any:
-			fmt.Printf("%s%-18s (%d)\n", indent, dim(k), len(vv))
-			for _, item := range vv {
-				if mm, ok := item.(map[string]any); ok {
-					printKVMap(mm, indent+"  ")
-				} else {
-					fmt.Printf("%s  %s\n", indent, dim(str(item)))
-				}
-			}
+			fmt.Printf("%s%s: %s\n", indent, k, joinAny(vv))
 		default:
-			fmt.Printf("%s%-18s %v\n", indent, dim(k), v)
+			fmt.Printf("%s%s: %v\n", indent, k, v)
 		}
 	}
 }
 
-// ── Time helpers ──────────────────────────────────────────────────────────────
+func joinAny(items []any) string {
+	parts := make([]string, 0, len(items))
+	for _, i := range items {
+		parts = append(parts, str(i))
+	}
+	return strings.Join(parts, ", ")
+}
 
 var timeFormats = []string{
 	time.RFC3339Nano,
@@ -292,36 +261,14 @@ var timeFormats = []string{
 	"2006-01-02 15:04:05.999999999 -0700 MST",
 }
 
-func parseTime(raw string) (time.Time, bool) {
+func fmtTime(raw string) string {
 	for _, f := range timeFormats {
 		if t, err := time.Parse(f, raw); err == nil {
-			return t.Local(), true
+			return t.Local().Format("2006-01-02 15:04:05")
 		}
 	}
-	return time.Time{}, false
-}
-
-func fmtTime(raw string) string {
-	if raw == "" {
-		return dim("—")
-	}
-	if t, ok := parseTime(raw); ok {
-		return t.Format("2006-01-02 15:04:05")
-	}
 	return raw
 }
-
-func fmtTimeShort(raw string) string {
-	if raw == "" {
-		return "—"
-	}
-	if t, ok := parseTime(raw); ok {
-		return t.Format("01-02 15:04:05")
-	}
-	return raw
-}
-
-// ── Misc ──────────────────────────────────────────────────────────────────────
 
 func str(v any) string {
 	if v == nil {
