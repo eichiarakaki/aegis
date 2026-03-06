@@ -90,35 +90,68 @@ func HandleComponentConnection(conn net.Conn, sessionStore *core.SessionStore, p
 
 	logging = logging.WithField("session_id", session.ID)
 
-	// STEP 3: Resolve component ID.
-	// If the component was launched by aegisd (via LaunchComponents), it will
-	// have received AEGIS_COMPONENT_ID and sent it back in the REGISTER payload.
-	// Honouring that ID keeps the log-pump subject (aegis.logs.<id>) and the
-	// registry entry in sync. Fall back to generating a new ID only when the
-	// component connected manually without a pre-assigned ID.
 	componentID := registerPayload.ComponentID
-	if componentID == "" {
-		componentID = utils.GenerateComponentID()
-		logging.Debugf("No component_id in REGISTER payload — generated: %s", componentID)
+
+	var comp *core.Component
+
+	// STEP 3
+	if componentID != "" {
+		// Process was launched by aegisd with a pre-assigned ID.
+		// Find the placeholder in the registry and hydrate it with real data.
+		existing, exists := registry.Get(componentID)
+		if exists && existing.State == core.ComponentStateInit {
+			if err := registry.UpdateFromRegister(
+				componentID,
+				registerPayload.ComponentName,
+				registerPayload.Version,
+				registerPayload.Capabilities,
+			); err != nil {
+				logging.Errorf("Failed to update placeholder: %s", err.Error())
+				sendErrorResponse(conn, registerEnvelope.MessageID, core.REGISTRATION_FAILED, err.Error(), false)
+				return
+			}
+			// Transition from INIT → REGISTERED manually since UpdateState
+			// validates transitions and INIT→REGISTERED is valid.
+			if err := registry.UpdateState(componentID, core.ComponentStateRegistered); err != nil {
+				logging.Errorf("Failed to transition placeholder state: %s", err.Error())
+				sendErrorResponse(conn, registerEnvelope.MessageID, core.REGISTRATION_FAILED, err.Error(), false)
+				return
+			}
+			comp, _ = registry.Get(componentID)
+			logging.Debugf("Hydrated placeholder component: %s", componentID)
+		} else {
+			// Pre-assigned ID but no matching placeholder — register fresh.
+			comp = &core.Component{
+				ID:           componentID,
+				Name:         registerPayload.ComponentName,
+				Version:      registerPayload.Version,
+				SessionID:    session.ID,
+				State:        core.ComponentStateRegistered,
+				Capabilities: registerPayload.Capabilities,
+			}
+			if err := registry.Register(comp); err != nil {
+				logging.Errorf("Failed to register component: %s", err.Error())
+				sendErrorResponse(conn, registerEnvelope.MessageID, core.REGISTRATION_FAILED, err.Error(), false)
+				return
+			}
+		}
 	} else {
-		logging.Debugf("Using pre-assigned component_id from REGISTER payload: %s", componentID)
-	}
-
-	comp := &core.Component{
-		ID:            componentID,
-		Name:          registerPayload.ComponentName,
-		Version:       registerPayload.Version,
-		SessionID:     session.ID,
-		State:         core.ComponentStateRegistered,
-		Capabilities:  registerPayload.Capabilities,
-		StartedAt:     time.Now(),
-		LastHeartbeat: time.Now(),
-	}
-
-	if err := registry.Register(comp); err != nil {
-		logging.Errorf("Failed to register component: %s", err.Error())
-		sendErrorResponse(conn, registerEnvelope.MessageID, core.REGISTRATION_FAILED, err.Error(), false)
-		return
+		// No pre-assigned ID — component connected manually.
+		componentID = utils.GenerateComponentID()
+		logging.Debugf("No component_id in REGISTER — generated: %s", componentID)
+		comp = &core.Component{
+			ID:           componentID,
+			Name:         registerPayload.ComponentName,
+			Version:      registerPayload.Version,
+			SessionID:    session.ID,
+			State:        core.ComponentStateRegistered,
+			Capabilities: registerPayload.Capabilities,
+		}
+		if err := registry.Register(comp); err != nil {
+			logging.Errorf("Failed to register component: %s", err.Error())
+			sendErrorResponse(conn, registerEnvelope.MessageID, core.REGISTRATION_FAILED, err.Error(), false)
+			return
+		}
 	}
 
 	logging = logging.WithField("component_id", componentID)

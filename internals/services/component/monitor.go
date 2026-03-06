@@ -49,6 +49,16 @@ func (m *HeartbeatMonitor) checkComponents() {
 		}
 
 		for _, comp := range session.Registry.List() {
+			// Skip components that haven't completed the handshake yet.
+			// INIT      = placeholder registered during attach, process not started.
+			// REGISTERED = process connected but still in WaitForReady.
+			// Heartbeating these would always fail and cause spurious cleanup.
+			if comp.State == core.ComponentStateInit ||
+				comp.State == core.ComponentStateRegistered ||
+				comp.State == core.ComponentStateInitializing {
+				continue
+			}
+
 			log := logger.WithComponent("HeartbeatMonitor").
 				WithField("session_id", session.ID).
 				WithField("component_id", comp.ID).

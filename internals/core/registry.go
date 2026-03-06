@@ -33,6 +33,23 @@ func (r *Registry) Register(comp *Component) error {
 	return nil
 }
 
+// UpdateFromRegister fills in the real fields of a placeholder component
+// created during attach. Called when the process connects and sends REGISTER.
+func (r *Registry) UpdateFromRegister(componentID, name, version string, caps ComponentCapabilities) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	comp, exists := r.components[componentID]
+	if !exists {
+		return NewValidationError(string(NOT_FOUND), "component not found")
+	}
+
+	comp.Name = name
+	comp.Version = version
+	comp.Capabilities = caps
+	return nil
+}
+
 // Get gets a component by ID
 func (r *Registry) Get(componentID string) (*Component, bool) {
 	r.mu.RLock()
