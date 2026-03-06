@@ -9,23 +9,25 @@ import (
 	"syscall"
 )
 
+// resolveDaemonBinary locates the aegisd binary.
+// It first checks the directory containing the running CLI binary, then falls
+// back to PATH.
 func resolveDaemonBinary() (string, error) {
-	// 1. Same directory as the CLI binary
-	self, err := os.Executable()
-	if err == nil {
+	if self, err := os.Executable(); err == nil {
 		candidate := filepath.Join(filepath.Dir(self), "aegisd")
 		if _, err := os.Stat(candidate); err == nil {
 			return candidate, nil
 		}
 	}
-	// 2. PATH
 	return exec.LookPath("aegisd")
 }
 
+// writePID writes pid to the file at path, creating or truncating it.
 func writePID(path string, pid int) error {
-	return os.WriteFile(path, []byte(strconv.Itoa(pid)), 0644)
+	return os.WriteFile(path, []byte(strconv.Itoa(pid)), 0o644)
 }
 
+// readPID reads and parses the PID stored in path.
 func readPID(path string) (int, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -34,11 +36,12 @@ func readPID(path string) (int, error) {
 	return strconv.Atoi(strings.TrimSpace(string(data)))
 }
 
+// isProcessRunning reports whether a process with the given PID is alive by
+// sending signal 0 (existence check, no actual signal delivered).
 func isProcessRunning(pid int) bool {
 	proc, err := os.FindProcess(pid)
 	if err != nil {
 		return false
 	}
-	// Signal 0 checks existence without actually sending anything
 	return proc.Signal(syscall.Signal(0)) == nil
 }
