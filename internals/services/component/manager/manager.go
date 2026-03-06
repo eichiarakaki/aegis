@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/eichiarakaki/aegis/internals/core"
-	"github.com/eichiarakaki/aegis/internals/core/component"
 	servicescomponent "github.com/eichiarakaki/aegis/internals/services/component"
 	"github.com/eichiarakaki/aegis/internals/services/utils"
 
@@ -32,42 +31,42 @@ func HandleComponentConnection(conn net.Conn, sessionStore *core.SessionStore, p
 	dec := json.NewDecoder(bufio.NewReader(conn))
 
 	// STEP 1: Receive REGISTER message
-	var registerEnvelope component.Envelope
+	var registerEnvelope core.Envelope
 	if err := dec.Decode(&registerEnvelope); err != nil {
 		logging.Errorf("Failed to decode envelope: %s", err.Error())
-		sendErrorResponse(conn, "", "DECODE_ERROR", "Failed to decode message", false)
+		sendErrorResponse(conn, "", core.DECODE_ERROR, "Failed to decode message", false)
 		return
 	}
 
 	if err := registerEnvelope.Validate(); err != nil {
 		logging.Warnf("Invalid envelope: %s", err.Error())
-		sendErrorResponse(conn, registerEnvelope.MessageID, "INVALID_ENVELOPE", err.Error(), false)
+		sendErrorResponse(conn, registerEnvelope.MessageID, core.INVALID_ENVELOPE, err.Error(), false)
 		return
 	}
 
-	if registerEnvelope.Type != component.MessageTypeLifecycle || registerEnvelope.Command != component.CommandRegister {
+	if registerEnvelope.Type != core.MessageTypeLifecycle || registerEnvelope.Command != core.CommandRegister {
 		logging.Warnf("Expected REGISTER command, got: %s %s", registerEnvelope.Type, registerEnvelope.Command)
-		sendErrorResponse(conn, registerEnvelope.MessageID, "INVALID_COMMAND", "Expected REGISTER command", false)
+		sendErrorResponse(conn, registerEnvelope.MessageID, core.INVALID_COMMAND, "Expected REGISTER command", false)
 		return
 	}
 
-	var registerPayload component.RegisterPayload
+	var registerPayload core.RegisterPayload
 	payloadJSON, _ := json.Marshal(registerEnvelope.Payload)
 	if err := json.Unmarshal(payloadJSON, &registerPayload); err != nil {
 		logging.Errorf("Failed to parse register payload: %s", err.Error())
-		sendErrorResponse(conn, registerEnvelope.MessageID, "INVALID_PAYLOAD", "Failed to parse payload", false)
+		sendErrorResponse(conn, registerEnvelope.MessageID, core.INVALID_PAYLOAD, "Failed to parse payload", false)
 		return
 	}
 
 	if registerPayload.SessionToken == "" {
 		logging.Warnf("Missing session_token in register payload")
-		sendErrorResponse(conn, registerEnvelope.MessageID, "MISSING_SESSION_TOKEN", "session_token is required", false)
+		sendErrorResponse(conn, registerEnvelope.MessageID, core.MISSING_SESSION_TOKEN, "session_token is required", false)
 		return
 	}
 
 	if registerPayload.ComponentName == "" {
 		logging.Warnf("Missing component_name in register payload")
-		sendErrorResponse(conn, registerEnvelope.MessageID, "MISSING_COMPONENT_NAME", "component_name is required", false)
+		sendErrorResponse(conn, registerEnvelope.MessageID, core.MISSING_COMPONENT_NAME, "component_name is required", false)
 		return
 	}
 
@@ -78,14 +77,14 @@ func HandleComponentConnection(conn net.Conn, sessionStore *core.SessionStore, p
 	session, err := sessions.GetSessionByHint(registerPayload.SessionToken, sessionStore)
 	if err != nil {
 		logging.Errorf("Session token does not match any active session: %s", err.Error())
-		sendErrorResponse(conn, registerEnvelope.MessageID, "WRONG_SESSION_TOKEN", "The token provided does not match any active session.", false)
+		sendErrorResponse(conn, registerEnvelope.MessageID, core.MISSING_SESSION_TOKEN, "The token provided does not match any active session.", false)
 		return
 	}
 
 	registry := session.Registry
 	if registry == nil {
 		logging.Errorf("Session %s has no initialized registry", session.ID)
-		sendErrorResponse(conn, registerEnvelope.MessageID, "SESSION_REGISTRY_UNAVAILABLE", "Session registry is not initialized.", false)
+		sendErrorResponse(conn, registerEnvelope.MessageID, core.SESSION_REGISTRY_UNAVAILABLE, "Session registry is not initialized.", false)
 		return
 	}
 
@@ -105,12 +104,12 @@ func HandleComponentConnection(conn net.Conn, sessionStore *core.SessionStore, p
 		logging.Debugf("Using pre-assigned component_id from REGISTER payload: %s", componentID)
 	}
 
-	comp := &component.Component{
+	comp := &core.Component{
 		ID:            componentID,
 		Name:          registerPayload.ComponentName,
 		Version:       registerPayload.Version,
 		SessionID:     session.ID,
-		State:         component.ComponentStateRegistered,
+		State:         core.ComponentStateRegistered,
 		Capabilities:  registerPayload.Capabilities,
 		StartedAt:     time.Now(),
 		LastHeartbeat: time.Now(),
@@ -118,7 +117,7 @@ func HandleComponentConnection(conn net.Conn, sessionStore *core.SessionStore, p
 
 	if err := registry.Register(comp); err != nil {
 		logging.Errorf("Failed to register component: %s", err.Error())
-		sendErrorResponse(conn, registerEnvelope.MessageID, "REGISTRATION_FAILED", err.Error(), false)
+		sendErrorResponse(conn, registerEnvelope.MessageID, core.REGISTRATION_FAILED, err.Error(), false)
 		return
 	}
 
@@ -161,13 +160,21 @@ func HandleComponentConnection(conn net.Conn, sessionStore *core.SessionStore, p
 	configureEnvelope, err := ConfigureResponse(componentID, streamSocketPath, newTopics)
 	if err != nil {
 		logging.Errorf("Failed to create CONFIGURE envelope: %s", err.Error())
-		sendErrorResponse(conn, "", "INTERNAL_ERROR", "Failed to build configuration", false)
-		registry.Unregister(componentID)
+		sendErrorResponse(conn, "", core.INTERNAL_ERROR, "Failed to build configuration", false)
+		err := registry.Unregister(componentID)
+		if err != nil {
+			logger.Errorf("Failed to unregister component: %s", err.Error())
+			return
+		}
 		return
 	}
 	if err := json.NewEncoder(conn).Encode(configureEnvelope); err != nil {
 		logging.Errorf("Failed to send CONFIGURE: %s", err.Error())
-		registry.Unregister(componentID)
+		err := registry.Unregister(componentID)
+		if err != nil {
+			logger.Errorf("Failed to unregister component: %s", err.Error())
+			return
+		}
 		return
 	}
 	logging.Infof("Sent CONFIGURE — socket=%s topics=%v", streamSocketPath, newTopics)
@@ -175,8 +182,12 @@ func HandleComponentConnection(conn net.Conn, sessionStore *core.SessionStore, p
 	// STEP 7: Wait for ACK of CONFIGURE
 	if err := WaitForConfigACK(conn, dec, configureEnvelope.MessageID, logging); err != nil {
 		logging.Errorf("Component did not ACK configuration: %s", err.Error())
-		sendErrorResponse(conn, "", "CONFIG_ACK_TIMEOUT", "Component did not acknowledge configuration", false)
-		registry.Unregister(componentID)
+		sendErrorResponse(conn, "", core.CONFIG_ACK_TIMEOUT, "Component did not acknowledge configuration", false)
+		err := registry.Unregister(componentID)
+		if err != nil {
+			logger.Errorf("Failed to unregister component: %s", err.Error())
+			return
+		}
 		return
 	}
 	logging.Infof("Configuration acknowledged by component — handing off to lifecycle loop")
@@ -188,8 +199,8 @@ func HandleComponentConnection(conn net.Conn, sessionStore *core.SessionStore, p
 func handleComponentLifecycle(
 	conn net.Conn,
 	dec *json.Decoder,
-	registry *component.ComponentRegistry,
-	comp *component.Component,
+	registry *core.Registry,
+	comp *core.Component,
 	logger *logger.Logger,
 ) {
 	if err := conn.SetReadDeadline(time.Now().Add(30 * time.Second)); err != nil {
@@ -197,7 +208,7 @@ func handleComponentLifecycle(
 	}
 
 	for {
-		var envelope component.Envelope
+		var envelope core.Envelope
 		if err := dec.Decode(&envelope); err != nil {
 			logger.Warnf("Connection closed or error reading message: %s", err.Error())
 			_ = registry.Unregister(comp.ID)
@@ -211,18 +222,18 @@ func handleComponentLifecycle(
 
 		if err := envelope.Validate(); err != nil {
 			logger.Warnf("Invalid envelope: %s", err.Error())
-			sendErrorResponse(conn, envelope.MessageID, "INVALID_ENVELOPE", err.Error(), false)
+			sendErrorResponse(conn, envelope.MessageID, core.INVALID_ENVELOPE, err.Error(), false)
 			continue
 		}
 
 		logger.Debugf("Received message: type=%s command=%s", envelope.Type, envelope.Command)
 
 		switch envelope.Type {
-		case component.MessageTypeLifecycle:
+		case core.MessageTypeLifecycle:
 			handleLifecycleMessage(conn, registry, comp, &envelope, logger)
-		case component.MessageTypeHeartbeat:
+		case core.MessageTypeHeartbeat:
 			handleHeartbeatMessage(conn, registry, comp, &envelope, logger)
-		case component.MessageTypeConfig:
+		case core.MessageTypeConfig:
 			handleConfigMessage(conn, registry, comp, &envelope, logger)
 		default:
 			logger.Warnf("Unknown message type: %s", envelope.Type)
@@ -233,24 +244,24 @@ func handleComponentLifecycle(
 
 func handleLifecycleMessage(
 	conn net.Conn,
-	registry *component.ComponentRegistry,
-	comp *component.Component,
-	envelope *component.Envelope,
+	registry *core.Registry,
+	comp *core.Component,
+	envelope *core.Envelope,
 	logger *logger.Logger,
 ) {
 	switch envelope.Command {
-	case component.CommandStateUpdate:
-		var payload component.StateUpdatePayload
+	case core.CommandStateUpdate:
+		var payload core.StateUpdatePayload
 		payloadJSON, _ := json.Marshal(envelope.Payload)
 		if err := json.Unmarshal(payloadJSON, &payload); err != nil {
 			logger.Errorf("Failed to parse state update payload: %s", err.Error())
-			sendErrorResponse(conn, envelope.MessageID, "INVALID_PAYLOAD", "Failed to parse payload", false)
+			sendErrorResponse(conn, envelope.MessageID, core.INVALID_PAYLOAD, "Failed to parse payload", false)
 			return
 		}
 
 		if err := registry.UpdateState(comp.ID, payload.State); err != nil {
 			logger.Warnf("Failed to update state: %s", err.Error())
-			sendErrorResponse(conn, envelope.MessageID, "STATE_TRANSITION_FAILED", err.Error(), false)
+			sendErrorResponse(conn, envelope.MessageID, core.STATE_TRANSITION_FAILED, err.Error(), false)
 			return
 		}
 
@@ -261,7 +272,7 @@ func handleLifecycleMessage(
 			return
 		}
 
-	case component.CommandShutdown:
+	case core.CommandShutdown:
 		logger.Infof("Component initiated shutdown")
 		ackEnvelope, _ := ACKResponse(envelope.MessageID)
 		_ = json.NewEncoder(conn).Encode(ackEnvelope)
@@ -269,19 +280,19 @@ func handleLifecycleMessage(
 
 	default:
 		logger.Warnf("Unknown lifecycle command: %s", envelope.Command)
-		sendErrorResponse(conn, envelope.MessageID, "UNKNOWN_COMMAND", "Unknown lifecycle command", false)
+		sendErrorResponse(conn, envelope.MessageID, core.UNKNOWN_COMMAND, "Unknown lifecycle command", false)
 	}
 }
 
 func handleHeartbeatMessage(
 	conn net.Conn,
-	registry *component.ComponentRegistry,
-	comp *component.Component,
-	envelope *component.Envelope,
+	registry *core.Registry,
+	comp *core.Component,
+	envelope *core.Envelope,
 	logger *logger.Logger,
 ) {
 	switch envelope.Command {
-	case component.CommandPing:
+	case core.CommandPing:
 		uptimeSeconds := int64(time.Since(comp.StartedAt).Seconds())
 		pongEnvelope, _ := PongResponse(envelope.MessageID, comp.State, uptimeSeconds)
 		if err := json.NewEncoder(conn).Encode(pongEnvelope); err != nil {
@@ -289,35 +300,35 @@ func handleHeartbeatMessage(
 		}
 		logger.Debugf("Sent PONG response")
 
-	case component.CommandPong:
+	case core.CommandPong:
 		logger.Debugf("Received PONG from component")
 		_ = registry.UpdateHeartbeat(comp.ID)
 
 	default:
 		logger.Warnf("Unknown heartbeat command: %s", envelope.Command)
-		sendErrorResponse(conn, envelope.MessageID, "UNKNOWN_COMMAND", "Unknown heartbeat command", false)
+		sendErrorResponse(conn, envelope.MessageID, core.UNKNOWN_COMMAND, "Unknown heartbeat command", false)
 	}
 }
 
 func handleConfigMessage(
 	conn net.Conn,
-	registry *component.ComponentRegistry,
-	comp *component.Component,
-	envelope *component.Envelope,
+	registry *core.Registry,
+	comp *core.Component,
+	envelope *core.Envelope,
 	logger *logger.Logger,
 ) {
 	switch envelope.Command {
-	case component.CommandConfigure:
-		var payload component.ConfigurePayload
+	case core.CommandConfigure:
+		var payload core.ConfigurePayload
 		payloadJSON, _ := json.Marshal(envelope.Payload)
 		if err := json.Unmarshal(payloadJSON, &payload); err != nil {
 			logger.Errorf("Failed to parse configure payload: %s", err.Error())
-			sendErrorResponse(conn, envelope.MessageID, "INVALID_PAYLOAD", "Failed to parse payload", false)
+			sendErrorResponse(conn, envelope.MessageID, core.INVALID_PAYLOAD, "Failed to parse payload", false)
 			return
 		}
-		if err := registry.UpdateState(comp.ID, component.ComponentStateConfigured); err != nil {
+		if err := registry.UpdateState(comp.ID, core.ComponentStateConfigured); err != nil {
 			logger.Errorf("Failed to update state to CONFIGURED: %s", err.Error())
-			sendErrorResponse(conn, envelope.MessageID, "STATE_TRANSITION_FAILED", err.Error(), false)
+			sendErrorResponse(conn, envelope.MessageID, core.STATE_TRANSITION_FAILED, err.Error(), false)
 			return
 		}
 		ackEnvelope, _ := ACKResponse(envelope.MessageID)
@@ -326,11 +337,11 @@ func handleConfigMessage(
 
 	default:
 		logger.Warnf("Unknown config command: %s", envelope.Command)
-		sendErrorResponse(conn, envelope.MessageID, "UNKNOWN_COMMAND", "Unknown config command", false)
+		sendErrorResponse(conn, envelope.MessageID, core.UNKNOWN_COMMAND, "Unknown config command", false)
 	}
 }
 
-func sendErrorResponse(conn net.Conn, correlationID, code, message string, recoverable bool) {
+func sendErrorResponse(conn net.Conn, correlationID, code core.ErrorCode, message string, recoverable bool) {
 	errorEnvelope, err := ErrorResponse(correlationID, code, message, recoverable)
 	if err != nil {
 		logger.Errorf("Failed to create error response: %s", err.Error())

@@ -2,12 +2,11 @@ package sessions
 
 import (
 	"github.com/eichiarakaki/aegis/internals/core"
-	"github.com/eichiarakaki/aegis/internals/core/component"
 )
 
 func GetSessionState(cmd core.Command, session *core.Session) (core.Response, error) {
 
-	var components []*component.Component
+	var components []*core.Component
 
 	for _, c := range session.Registry.List() {
 		components = append(components, c)
@@ -15,8 +14,8 @@ func GetSessionState(cmd core.Command, session *core.Session) (core.Response, er
 
 	sessionState := core.Response{
 		RequestID: cmd.RequestID,
-		Command:   "SESSION_STATE",
-		Status:    "ok",
+		Command:   core.CommandSessionState,
+		Status:    core.OK,
 		// ErrorCode: "",
 		// Message:   "",
 		Data: map[string]any{

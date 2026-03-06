@@ -1,17 +1,17 @@
-package component
+package core
 
 import (
 	"sync"
 	"time"
 )
 
-// Component representa un componente registrado en Aegis
+// Component represents a component in Aegis
 type Component struct {
 	ID           string
 	SessionID    string
 	Name         string
 	Version      string
-	State        ComponentState
+	State        ForeignComponentState
 	Capabilities ComponentCapabilities
 
 	StartedAt     time.Time
@@ -20,8 +20,8 @@ type Component struct {
 }
 
 // isValidStateTransition validates if a state transition is allowed
-func isValidStateTransition(from, to ComponentState) bool {
-	validTransitions := map[ComponentState][]ComponentState{
+func isValidStateTransition(from, to ForeignComponentState) bool {
+	validTransitions := map[ForeignComponentState][]ForeignComponentState{
 		ComponentStateInit:         {ComponentStateRegistered},
 		ComponentStateRegistered:   {ComponentStateInitializing, ComponentStateError},
 		ComponentStateInitializing: {ComponentStateReady, ComponentStateError},

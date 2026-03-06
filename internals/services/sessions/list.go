@@ -35,7 +35,7 @@ func ListSessions(sessionStore *core.SessionStore) map[string]any {
 			"stream_socket": session.GetStreamSocketPath(),
 			"topics":        session.Topics,
 			"mode":          session.Mode,
-			"state":         core.SessionStateToString(session.GetState()),
+			"state":         string(session.GetState()),
 			"components":    componentList,
 			"created_at":    session.CreatedAt,
 			"started_at":    session.StartedAt,

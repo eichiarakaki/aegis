@@ -5,49 +5,14 @@ import (
 	"fmt"
 	"sync"
 	"time"
-
-	"github.com/eichiarakaki/aegis/internals/core/component"
 )
-
-type SessionStateType int
-
-const (
-	SessionInitialized SessionStateType = iota
-	SessionStarting
-	SessionRunning
-	SessionStopping
-	SessionStopped
-	SessionFinished
-	SessionError
-)
-
-func SessionStateToString(state SessionStateType) string {
-	switch state {
-	case SessionInitialized:
-		return "INITIALIZED"
-	case SessionStarting:
-		return "STARTING"
-	case SessionRunning:
-		return "RUNNING"
-	case SessionStopping:
-		return "STOPPING"
-	case SessionStopped:
-		return "STOPPED"
-	case SessionFinished:
-		return "FINISHED"
-	case SessionError:
-		return "ERROR"
-	default:
-		return "UNKNOWN"
-	}
-}
 
 type Session struct {
 	ID       string
 	Name     string
 	Mode     string // realtime | historical
 	State    SessionStateType
-	Registry *component.ComponentRegistry
+	Registry *Registry
 
 	CreatedAt time.Time
 	StartedAt *time.Time
@@ -74,7 +39,7 @@ func NewSession(id string, name string, mode string) *Session {
 		Name:           name,
 		Mode:           mode,
 		State:          SessionInitialized,
-		Registry:       component.NewComponentRegistry(),
+		Registry:       NewComponentRegistry(),
 		StreamSocket:   nil,
 		Topics:         nil,
 		TopicOwners:    make(map[string][]string),
@@ -294,7 +259,7 @@ func (s *Session) SetToError() error {
 }
 
 // AddComponent adds a component to the session's registry.
-func (s *Session) AddComponent(c *component.Component) error {
+func (s *Session) AddComponent(c *Component) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -556,7 +521,7 @@ func (store *SessionStore) TotalComponents() int {
 	return count
 }
 
-func (store *SessionStore) TotalComponentsByStateFromAllSessions(state component.ComponentState) int {
+func (store *SessionStore) TotalComponentsByStateFromAllSessions(state ForeignComponentState) int {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
 

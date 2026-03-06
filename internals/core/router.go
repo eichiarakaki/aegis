@@ -1,38 +1,9 @@
 package core
 
-// CommandType holds the string identifier for a CLI/daemon command.
-// Keeping them as constants avoids typos across cmd, server and tests.
-type CommandType string
-
-const (
-	// Daemon lifecycle
-	CommandDaemonShutdown CommandType = "DAEMON_SHUTDOWN"
-	CommandDaemonKill     CommandType = "DAEMON_KILL"
-
-	// Sessions
-	CommandSessionCreate CommandType = "SESSION_CREATE"
-	CommandSessionAttach CommandType = "SESSION_ATTACH"
-	CommandSessionStart  CommandType = "SESSION_START"
-	CommandSessionStop   CommandType = "SESSION_STOP"
-	CommandSessionList   CommandType = "SESSION_LIST"
-	CommandSessionState  CommandType = "SESSION_STATE"
-	CommandSessionDelete CommandType = "SESSION_DELETE"
-
-	// Components
-	CommandComponentList      CommandType = "COMPONENT_LIST"
-	CommandComponentGet       CommandType = "COMPONENT_GET"
-	CommandComponentDescribe  CommandType = "COMPONENT_DESCRIBE"
-	CommandComponentLogs      CommandType = "COMPONENT_LOGS"
-	CommandComponentLogPath   CommandType = "COMPONENT_LOG_PATH"
-	CommandHealthCheck        CommandType = "HEALTH_CHECK"
-	CommandHealthCheckSession CommandType = "HEALTH_CHECK_SESSION"
-	CommandHealthCheckComp    CommandType = "HEALTH_CHECK_COMPONENT"
-)
-
 type Command struct {
-	RequestID string      `json:"request_id"`
-	Type      CommandType `json:"type"`
-	Payload   interface{} `json:"payload"`
+	RequestID string         `json:"request_id"`
+	Type      CLICommandType `json:"type"`
+	Payload   interface{}    `json:"payload"`
 }
 
 // Specific payload for each command

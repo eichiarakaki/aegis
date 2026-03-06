@@ -19,8 +19,8 @@ func HandleSessionAttach(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 	if err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   string(core.CommandSessionAttach),
-			Status:    "error",
+			Command:   core.CommandSessionAttach,
+			Status:    core.ERROR,
 			Message:   "Invalid payload format",
 		})
 		return
@@ -29,8 +29,8 @@ func HandleSessionAttach(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   string(core.CommandSessionAttach),
-			Status:    "error",
+			Command:   core.CommandSessionAttach,
+			Status:    core.ERROR,
 			Message:   fmt.Sprintf("Payload parsing error: %s", err.Error()),
 		})
 		return
@@ -40,8 +40,8 @@ func HandleSessionAttach(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 	if payload.SessionID == "" {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   string(core.CommandSessionAttach),
-			Status:    "error",
+			Command:   core.CommandSessionAttach,
+			Status:    core.ERROR,
 			Message:   "Missing required field: session_id",
 		})
 		return
@@ -50,8 +50,8 @@ func HandleSessionAttach(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 	if len(payload.Paths) == 0 {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   string(core.CommandSessionAttach),
-			Status:    "error",
+			Command:   core.CommandSessionAttach,
+			Status:    core.ERROR,
 			Message:   "At least one component path is required",
 		})
 		return
@@ -64,8 +64,8 @@ func HandleSessionAttach(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 	if err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "SESSION_ATTACH",
-			Status:    "error",
+			Command:   core.CommandSessionAttach,
+			Status:    core.ERROR,
 			Message:   err.Error(),
 			Data: map[string]string{
 				"session_id": payload.SessionID,
@@ -80,8 +80,8 @@ func HandleSessionAttach(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 		logger.WithRequestID(cmd.RequestID).Errorf("Failed to attach components: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "SESSION_ATTACH",
-			Status:    "error",
+			Command:   core.CommandSessionAttach,
+			Status:    core.ERROR,
 			Message:   fmt.Sprintf("Failed to attach components: %s", err.Error()),
 			Data: map[string]string{
 				"session_id": session.ID,
@@ -94,8 +94,8 @@ func HandleSessionAttach(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 
 	core.WriteJSON(conn, core.Response{
 		RequestID: cmd.RequestID,
-		Command:   string(core.CommandSessionAttach),
-		Status:    "ok",
+		Command:   core.CommandSessionAttach,
+		Status:    core.OK,
 		Message:   fmt.Sprintf("Attached %d components to %s (%s)", len(components), session.Name, utils.GetShortHash(session.ID)),
 		Data: map[string]interface{}{
 			"session_id":          session.ID,

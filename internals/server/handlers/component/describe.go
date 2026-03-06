@@ -20,8 +20,8 @@ func HandleComponentDescribe(cmd core.Command, conn net.Conn, sessionStore *core
 		logger.WithRequestID(cmd.RequestID).Errorf("Failed to marshal payload: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   string(core.CommandComponentDescribe),
-			Status:    "error",
+			Command:   core.CommandComponentDescribe,
+			Status:    core.ERROR,
 			Message:   "Invalid payload format",
 		})
 		return
@@ -31,8 +31,8 @@ func HandleComponentDescribe(cmd core.Command, conn net.Conn, sessionStore *core
 		logger.WithRequestID(cmd.RequestID).Errorf("Failed to unmarshal payload: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "COMPONENT_DESCRIBE",
-			Status:    "error",
+			Command:   core.CommandComponentDescribe,
+			Status:    core.ERROR,
 			Message:   fmt.Sprintf("Payload parsing error: %s", err.Error()),
 		})
 		return
@@ -43,8 +43,8 @@ func HandleComponentDescribe(cmd core.Command, conn net.Conn, sessionStore *core
 		logger.WithRequestID(cmd.RequestID).Warnf("Component describe failed: missing session_id")
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "COMPONENT_DESCRIBE",
-			Status:    "error",
+			Command:   core.CommandComponentDescribe,
+			Status:    core.ERROR,
 			Message:   "Missing required field: session_id",
 		})
 		return
@@ -58,8 +58,8 @@ func HandleComponentDescribe(cmd core.Command, conn net.Conn, sessionStore *core
 		logger.WithRequestID(cmd.RequestID).Warnf("Session not found: %s", payload.SessionID)
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "COMPONENT_DESCRIBE",
-			Status:    "error",
+			Command:   core.CommandComponentDescribe,
+			Status:    core.ERROR,
 			Message:   "Session not found",
 		})
 		return
@@ -71,8 +71,8 @@ func HandleComponentDescribe(cmd core.Command, conn net.Conn, sessionStore *core
 		logger.WithRequestID(cmd.RequestID).Errorf("Failed to describe components: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "COMPONENT_DESCRIBE",
-			Status:    "error",
+			Command:   core.CommandComponentDescribe,
+			Status:    core.ERROR,
 			Message:   fmt.Sprintf("Failed to describe components: %s", err.Error()),
 		})
 		return
@@ -82,8 +82,8 @@ func HandleComponentDescribe(cmd core.Command, conn net.Conn, sessionStore *core
 
 	core.WriteJSON(conn, core.Response{
 		RequestID: cmd.RequestID,
-		Command:   string(core.CommandComponentDescribe),
-		Status:    "ok",
+		Command:   core.CommandComponentDescribe,
+		Status:    core.OK,
 		Data:      data,
 	})
 }

@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/eichiarakaki/aegis/internals/core"
-	"github.com/eichiarakaki/aegis/internals/core/component"
 	"github.com/eichiarakaki/aegis/internals/logger"
 )
 
@@ -69,16 +68,16 @@ func (m *HeartbeatMonitor) checkComponents() {
 }
 
 // sendPing sends a PING message to the component through its active connection.
-func (m *HeartbeatMonitor) sendPing(comp *component.Component, log *logger.Logger) {
+func (m *HeartbeatMonitor) sendPing(comp *core.Component, log *logger.Logger) {
 	conn, exists := m.pool.Get(comp.ID)
 	if !exists {
 		log.Warnf("No active connection found for component, skipping PING")
 		return
 	}
 
-	pingEnvelope := component.NewEnvelope(
-		component.MessageTypeHeartbeat,
-		component.CommandPing,
+	pingEnvelope := core.NewEnvelope(
+		core.MessageTypeHeartbeat,
+		core.CommandPing,
 		"aegis",
 		"component:"+comp.Name,
 		map[string]any{},
@@ -92,12 +91,12 @@ func (m *HeartbeatMonitor) sendPing(comp *component.Component, log *logger.Logge
 // handleDeadComponent transitions the component to ERROR state, notifies its
 // parent session, closes its connection, and unregisters it from the registry.
 func (m *HeartbeatMonitor) handleDeadComponent(
-	registry *component.ComponentRegistry,
-	comp *component.Component,
+	registry *core.Registry,
+	comp *core.Component,
 	log *logger.Logger,
 ) {
 	// 1. Transition component state to ERROR
-	if err := registry.UpdateState(comp.ID, component.ComponentStateError); err != nil {
+	if err := registry.UpdateState(comp.ID, core.ComponentStateError); err != nil {
 		log.Errorf("Failed to transition component to ERROR state: %s", err.Error())
 	}
 

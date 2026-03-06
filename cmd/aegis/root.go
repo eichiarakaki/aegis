@@ -359,7 +359,7 @@ var healthComponentCmd = &cobra.Command{
 // REQUEST / SEND
 /////////////////////////
 
-func requestJSON(cmdType core.CommandType, payload interface{}) (map[string]any, error) {
+func requestJSON(cmdType core.CLICommandType, payload interface{}) (map[string]any, error) {
 	cfg, err := config.LoadGlobals()
 	if err != nil {
 		return nil, err
@@ -384,7 +384,7 @@ func requestJSON(cmdType core.CommandType, payload interface{}) (map[string]any,
 	return response, nil
 }
 
-func sendCommand(cmdType core.CommandType, payload interface{}) error {
+func sendCommand(cmdType core.CLICommandType, payload interface{}) error {
 	resp, err := requestJSON(cmdType, payload)
 	if err != nil {
 		return err

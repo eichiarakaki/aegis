@@ -20,8 +20,8 @@ func HandleSessionDelete(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 		logger.WithRequestID(cmd.RequestID).Errorf("Failed to marshal payload: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   string(core.CommandSessionDelete),
-			Status:    "error",
+			Command:   core.CommandSessionDelete,
+			Status:    core.ERROR,
 			Message:   "Invalid payload format",
 		})
 		return
@@ -31,8 +31,8 @@ func HandleSessionDelete(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 		logger.WithRequestID(cmd.RequestID).Errorf("Failed to unmarshal payload: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   string(core.CommandSessionDelete),
-			Status:    "error",
+			Command:   core.CommandSessionDelete,
+			Status:    core.ERROR,
 			Message:   fmt.Sprintf("Payload parsing error: %s", err.Error()),
 		})
 		return
@@ -43,8 +43,8 @@ func HandleSessionDelete(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 		logger.WithRequestID(cmd.RequestID).Warnf("Session deletion failed: missing session_id")
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   string(core.CommandSessionDelete),
-			Status:    "error",
+			Command:   core.CommandSessionDelete,
+			Status:    core.ERROR,
 			Message:   "Missing required field: session_id",
 		})
 		return
@@ -58,8 +58,8 @@ func HandleSessionDelete(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 		logger.WithRequestID(cmd.RequestID).Warnf("Session not found: %s", payload.SessionID)
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "SESSION_DELETE",
-			Status:    "error",
+			Command:   core.CommandSessionDelete,
+			Status:    core.ERROR,
 			Message:   err.Error(),
 		})
 		return
@@ -74,8 +74,8 @@ func HandleSessionDelete(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 		logger.WithRequestID(cmd.RequestID).Errorf("Failed to delete session: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "SESSION_DELETE",
-			Status:    "error",
+			Command:   core.CommandSessionDelete,
+			Status:    core.ERROR,
 			Message:   fmt.Sprintf("Failed to delete session: %s", err.Error()),
 		})
 		return
@@ -85,8 +85,8 @@ func HandleSessionDelete(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 
 	core.WriteJSON(conn, core.Response{
 		RequestID: cmd.RequestID,
-		Command:   string(core.CommandSessionDelete),
-		Status:    "ok",
+		Command:   core.CommandSessionDelete,
+		Status:    core.OK,
 		Message:   fmt.Sprintf("Session deleted successfully: %s (%s)", sessionName, utils.GetShortHash(sessionID)),
 		Data: map[string]interface{}{
 			"session_id":   sessionID,

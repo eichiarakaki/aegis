@@ -1,4 +1,4 @@
-package component
+package core
 
 import (
 	"time"
@@ -22,61 +22,6 @@ import (
 
 const ProtocolVersion = "0.1.0"
 
-// MessageType classifies the message type in the protocol
-type MessageType string
-
-const (
-	MessageTypeControl   MessageType = "CONTROL"
-	MessageTypeLifecycle MessageType = "LIFECYCLE"
-	MessageTypeConfig    MessageType = "CONFIG"
-	MessageTypeError     MessageType = "ERROR"
-	MessageTypeHeartbeat MessageType = "HEARTBEAT"
-	MessageTypeData      MessageType = "DATA"
-)
-
-// ComponentState represents the possible states of a component
-type ComponentState string
-
-const (
-	ComponentStateInit         ComponentState = "INIT"
-	ComponentStateRegistered   ComponentState = "REGISTERED"
-	ComponentStateInitializing ComponentState = "INITIALIZING"
-	ComponentStateReady        ComponentState = "READY"
-	ComponentStateConfigured   ComponentState = "CONFIGURED"
-	ComponentStateRunning      ComponentState = "RUNNING"
-	ComponentStateWaiting      ComponentState = "WAITING"
-	ComponentStateError        ComponentState = "ERROR"
-	ComponentStateFinished     ComponentState = "FINISHED"
-	ComponentStateShutdown     ComponentState = "SHUTDOWN"
-)
-
-// CommandType represents the specific commands of the protocol
-type CommandType string
-
-const (
-	// Lifecycle commands
-	CommandRegister    CommandType = "REGISTER"
-	CommandRegistered  CommandType = "REGISTERED"
-	CommandStateUpdate CommandType = "STATE_UPDATE"
-	CommandShutdown    CommandType = "SHUTDOWN"
-
-	// Control commands
-	CommandACK  CommandType = "ACK"
-	CommandNACK CommandType = "NACK"
-
-	// Config commands
-	CommandConfigure  CommandType = "CONFIGURE"
-	CommandConfigured CommandType = "CONFIGURED"
-
-	// Heartbeat commands
-	CommandPing CommandType = "PING"
-	CommandPong CommandType = "PONG"
-
-	// Error commands
-	CommandRuntimeError       CommandType = "RUNTIME_ERROR"
-	CommandRegistrationFailed CommandType = "REGISTRATION_FAILED"
-)
-
 // Envelope is the standard structure for ALL the messages
 type Envelope struct {
 	ProtocolVersion string         `json:"protocol_version"`
@@ -85,8 +30,8 @@ type Envelope struct {
 	Timestamp       string         `json:"timestamp"`
 	Source          string         `json:"source"`
 	Target          string         `json:"target"`
-	Type            MessageType    `json:"type"`
-	Command         CommandType    `json:"command"`
+	Type            ForeignType    `json:"type"`
+	Command         ForeignType    `json:"command"`
 	Payload         map[string]any `json:"payload"`
 }
 
@@ -108,16 +53,16 @@ type ComponentCapabilities struct {
 
 // RegisteredPayload is the REGISTER response
 type RegisteredPayload struct {
-	ComponentID string         `json:"component_id"`
-	SessionID   string         `json:"session_id"`
-	State       ComponentState `json:"state"`
+	ComponentID string                `json:"component_id"`
+	SessionID   string                `json:"session_id"`
+	State       ForeignComponentState `json:"state"`
 }
 
 // StateUpdatePayload to notify state change
 type StateUpdatePayload struct {
-	State         ComponentState `json:"state"`
-	UptimeSeconds *int64         `json:"uptime_seconds,omitempty"`
-	Message       *string        `json:"message,omitempty"`
+	State         ForeignComponentState `json:"state"`
+	UptimeSeconds *int64                `json:"uptime_seconds,omitempty"`
+	Message       *string               `json:"message,omitempty"`
 }
 
 // ConfigurePayload is the configuration sent by Aegis
@@ -134,8 +79,8 @@ type ACKPayload struct {
 
 // PongPayload is the response of PING
 type PongPayload struct {
-	State         ComponentState `json:"state"`
-	UptimeSeconds int64          `json:"uptime_seconds"`
+	State         ForeignComponentState `json:"state"`
+	UptimeSeconds int64                 `json:"uptime_seconds"`
 }
 
 // ErrorPayload contains detailed information of an error
@@ -148,21 +93,21 @@ type ErrorPayload struct {
 
 // NewEnvelope creates a new envelope with default values
 func NewEnvelope(
-	messageType MessageType,
-	command CommandType,
+	messageType ForeignType,
+	command ForeignType,
 	source string,
 	target string,
 	payload map[string]interface{},
 ) *Envelope {
 	return &Envelope{
-		ProtocolVersion: "0.1",
+		ProtocolVersion: ProtocolVersion,
 		MessageID:       utils.GenerateSecureToken(),
 		CorrelationID:   nil,
 		Timestamp:       time.Now().UTC().Format(time.RFC3339),
 		Source:          source,
 		Target:          target,
-		Type:            messageType,
-		Command:         command,
+		Type:            ForeignType(messageType),
+		Command:         ForeignType(command),
 		Payload:         payload,
 	}
 }
@@ -176,31 +121,31 @@ func (e *Envelope) WithCorrelation(correlationID string) *Envelope {
 // Validate validates an envelope
 func (e *Envelope) Validate() error {
 	if e.ProtocolVersion == "" {
-		return NewValidationError("MISSING_PROTOCOL_VERSION", "protocol_version is required")
+		return NewValidationError(MISSING_PROTOCOL_VERSION, "protocol_version is required")
 	}
 
 	if e.MessageID == "" {
-		return NewValidationError("MISSING_MESSAGE_ID", "message_id is required")
+		return NewValidationError(MISSING_MESSAGE_ID, "message_id is required")
 	}
 
 	if e.Source == "" {
-		return NewValidationError("MISSING_SOURCE", "source is required")
+		return NewValidationError(MISSING_SOURCE, "source is required")
 	}
 
 	if e.Target == "" {
-		return NewValidationError("MISSING_TARGET", "target is required")
+		return NewValidationError(MISSING_TARGET, "target is required")
 	}
 
 	if e.Type == "" {
-		return NewValidationError("MISSING_TYPE", "type is required")
+		return NewValidationError(MISSING_TYPE, "type is required")
 	}
 
 	if e.Command == "" {
-		return NewValidationError("MISSING_COMMAND", "command is required")
+		return NewValidationError(MISSING_COMMAND, "command is required")
 	}
 
 	if e.Payload == nil {
-		return NewValidationError("MISSING_PAYLOAD", "payload is required")
+		return NewValidationError(MISSING_PAYLOAD, "payload is required")
 	}
 
 	return nil

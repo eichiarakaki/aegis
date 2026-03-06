@@ -6,40 +6,40 @@ import (
 	"net"
 	"time"
 
-	"github.com/eichiarakaki/aegis/internals/core/component"
+	"github.com/eichiarakaki/aegis/internals/core"
 	"github.com/eichiarakaki/aegis/internals/logger"
 	"github.com/eichiarakaki/aegis/internals/services/utils"
 )
 
-func RegisteredResponse(correlationID, componentID, sessionID string) (*component.Envelope, error) {
+func RegisteredResponse(correlationID, componentID, sessionID string) (*core.Envelope, error) {
 	if componentID == "" || sessionID == "" {
 		return nil, fmt.Errorf("componentID and sessionID are required")
 	}
-	env := component.NewEnvelope(
-		component.MessageTypeLifecycle,
-		component.CommandRegistered,
+	env := core.NewEnvelope(
+		core.MessageTypeLifecycle,
+		core.CommandRegistered,
 		"aegis",
 		"component:"+componentID,
 		map[string]any{
 			"component_id": componentID,
 			"session_id":   sessionID,
-			"state":        string(component.ComponentStateRegistered),
+			"state":        string(core.ComponentStateRegistered),
 		},
 	)
 	env.WithCorrelation(correlationID)
 	return env, nil
 }
 
-func ConfigureResponse(componentID, streamSocketPath string, topics []string) (*component.Envelope, error) {
+func ConfigureResponse(componentID, streamSocketPath string, topics []string) (*core.Envelope, error) {
 	if streamSocketPath == "" {
 		return nil, fmt.Errorf("streamSocketPath is required")
 	}
 	if topics == nil {
 		topics = []string{}
 	}
-	env := component.NewEnvelope(
-		component.MessageTypeConfig,
-		component.CommandConfigure,
+	env := core.NewEnvelope(
+		core.MessageTypeConfig,
+		core.CommandConfigure,
 		"aegis",
 		"component:"+componentID,
 		map[string]interface{}{
@@ -50,10 +50,10 @@ func ConfigureResponse(componentID, streamSocketPath string, topics []string) (*
 	return env, nil
 }
 
-func ACKResponse(correlationID string) (*component.Envelope, error) {
-	env := component.NewEnvelope(
-		component.MessageTypeControl,
-		component.CommandACK,
+func ACKResponse(correlationID string) (*core.Envelope, error) {
+	env := core.NewEnvelope(
+		core.MessageTypeControl,
+		core.CommandACK,
 		"aegis",
 		"component:unknown",
 		map[string]interface{}{"status": "ok"},
@@ -62,10 +62,10 @@ func ACKResponse(correlationID string) (*component.Envelope, error) {
 	return env, nil
 }
 
-func PongResponse(correlationID string, state component.ComponentState, uptimeSeconds int64) (*component.Envelope, error) {
-	env := component.NewEnvelope(
-		component.MessageTypeHeartbeat,
-		component.CommandPong,
+func PongResponse(correlationID string, state core.ForeignComponentState, uptimeSeconds int64) (*core.Envelope, error) {
+	env := core.NewEnvelope(
+		core.MessageTypeHeartbeat,
+		core.CommandPong,
 		"aegis",
 		"component:unknown",
 		map[string]interface{}{
@@ -77,10 +77,10 @@ func PongResponse(correlationID string, state component.ComponentState, uptimeSe
 	return env, nil
 }
 
-func ErrorResponse(correlationID, code, message string, recoverable bool) (*component.Envelope, error) {
-	env := component.NewEnvelope(
-		component.MessageTypeError,
-		component.CommandRuntimeError,
+func ErrorResponse(correlationID, code, message string, recoverable bool) (*core.Envelope, error) {
+	env := core.NewEnvelope(
+		core.MessageTypeError,
+		core.CommandRuntimeError,
 		"aegis",
 		"component:unknown",
 		map[string]any{
@@ -101,8 +101,8 @@ func ErrorResponse(correlationID, code, message string, recoverable bool) (*comp
 func WaitForReady(
 	conn net.Conn,
 	dec *json.Decoder,
-	registry *component.ComponentRegistry,
-	comp *component.Component,
+	registry *core.Registry,
+	comp *core.Component,
 	log *logger.Logger,
 ) error {
 	if err := conn.SetReadDeadline(time.Now().Add(30 * time.Second)); err != nil {
@@ -110,15 +110,15 @@ func WaitForReady(
 	}
 	defer conn.SetReadDeadline(time.Time{})
 
-	expected := []component.ComponentState{
-		component.ComponentStateInitializing,
-		component.ComponentStateReady,
+	expected := []core.ForeignComponentState{
+		core.ComponentStateInitializing,
+		core.ComponentStateReady,
 	}
 
 	for _, expectedState := range expected {
 		log.Debugf("Waiting for STATE_UPDATE(%s)…", expectedState)
 
-		var envelope component.Envelope
+		var envelope core.Envelope
 		if err := dec.Decode(&envelope); err != nil {
 			return fmt.Errorf("failed to read STATE_UPDATE(%s): %w", expectedState, err)
 		}
@@ -127,32 +127,32 @@ func WaitForReady(
 		}
 
 		if err := envelope.Validate(); err != nil {
-			sendErrorResponse(conn, envelope.MessageID, "INVALID_ENVELOPE", err.Error(), false)
+			sendErrorResponse(conn, envelope.MessageID, core.INVALID_ENVELOPE, err.Error(), false)
 			return fmt.Errorf("invalid envelope while waiting for %s: %w", expectedState, err)
 		}
 
-		if envelope.Type != component.MessageTypeLifecycle || envelope.Command != component.CommandStateUpdate {
-			sendErrorResponse(conn, envelope.MessageID, "UNEXPECTED_MESSAGE",
+		if envelope.Type != core.MessageTypeLifecycle || envelope.Command != core.CommandStateUpdate {
+			sendErrorResponse(conn, envelope.MessageID, core.UNEXPECTED_MESSAGE,
 				fmt.Sprintf("Expected STATE_UPDATE(%s)", expectedState), false)
 			return fmt.Errorf("unexpected message while waiting for %s: type=%s command=%s",
 				expectedState, envelope.Type, envelope.Command)
 		}
 
-		var payload component.StateUpdatePayload
+		var payload core.StateUpdatePayload
 		payloadJSON, _ := json.Marshal(envelope.Payload)
 		if err := json.Unmarshal(payloadJSON, &payload); err != nil {
-			sendErrorResponse(conn, envelope.MessageID, "INVALID_PAYLOAD", "Failed to parse state update payload", false)
+			sendErrorResponse(conn, envelope.MessageID, core.INVALID_PAYLOAD, "Failed to parse state update payload", false)
 			return fmt.Errorf("failed to parse state update payload: %w", err)
 		}
 
 		if payload.State != expectedState {
-			sendErrorResponse(conn, envelope.MessageID, "UNEXPECTED_STATE",
+			sendErrorResponse(conn, envelope.MessageID, core.UNEXPECTED_STATE,
 				fmt.Sprintf("Expected %s, got %s", expectedState, payload.State), false)
 			return fmt.Errorf("expected %s state, got %s", expectedState, payload.State)
 		}
 
 		if err := registry.UpdateState(comp.ID, expectedState); err != nil {
-			sendErrorResponse(conn, envelope.MessageID, "STATE_TRANSITION_FAILED", err.Error(), false)
+			sendErrorResponse(conn, envelope.MessageID, core.STATE_TRANSITION_FAILED, err.Error(), false)
 			return fmt.Errorf("failed to update state to %s: %w", expectedState, err)
 		}
 
@@ -190,7 +190,7 @@ func WaitForConfigACK(
 
 	logger.Debugf("Waiting for config ACK (correlating to message_id=%s)…", configureMessageID)
 
-	var envelope component.Envelope
+	var envelope core.Envelope
 	if err := dec.Decode(&envelope); err != nil {
 		return fmt.Errorf("failed to read ACK: %w", err)
 	}
@@ -199,7 +199,7 @@ func WaitForConfigACK(
 		return fmt.Errorf("invalid ACK envelope: %w", err)
 	}
 
-	if envelope.Command != component.CommandACK {
+	if envelope.Command != core.CommandACK {
 		return fmt.Errorf("expected ACK for CONFIGURE, got type=%s command=%s",
 			envelope.Type, envelope.Command)
 	}
@@ -221,7 +221,7 @@ func Rfc3339Now() string {
 	return time.Now().UTC().Format(time.RFC3339)
 }
 
-func BuildTopics(caps component.ComponentCapabilities) []string {
+func BuildTopics(caps core.ComponentCapabilities) []string {
 	timeframedStreams := map[string]bool{
 		"klines": true,
 	}
