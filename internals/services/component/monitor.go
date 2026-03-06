@@ -49,6 +49,16 @@ func (m *HeartbeatMonitor) checkComponents() {
 		}
 
 		for _, comp := range session.Registry.List() {
+			// Skip components that haven't completed the handshake yet.
+			// INIT      = placeholder registered during attach, process not started.
+			// REGISTERED = process connected but still in WaitForReady.
+			// Heartbeating these would always fail and cause spurious cleanup.
+			if comp.State == core.ComponentStateInit ||
+				comp.State == core.ComponentStateRegistered ||
+				comp.State == core.ComponentStateInitializing {
+				continue
+			}
+
 			log := logger.WithComponent("HeartbeatMonitor").
 				WithField("session_id", session.ID).
 				WithField("component_id", comp.ID).
@@ -119,6 +129,12 @@ func (m *HeartbeatMonitor) handleDeadComponent(
 
 	// 4. Unregister from the session's registry
 	if err := registry.Unregister(comp.ID); err != nil {
+		log.Errorf("Failed to unregister dead component: %s", err.Error())
+	}
+
+	// Ignore NOT_FOUND — handleComponentLifecycle may have already unregistered
+	// the component when it detected the connection drop concurrently.
+	if err := registry.Unregister(comp.ID); err != nil && !core.IsNotFound(err) {
 		log.Errorf("Failed to unregister dead component: %s", err.Error())
 	}
 

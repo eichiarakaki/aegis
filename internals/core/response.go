@@ -107,6 +107,90 @@ type ComponentDescribeData struct {
 	Component ComponentFullDetail `json:"component"`
 }
 
+// ── Health response data ──────────────────────────────────────────────────────
+
+type HealthGlobalData struct {
+	Status        string                 `json:"status"` // "healthy" | "degraded"
+	UptimeSeconds int64                  `json:"uptime_seconds"`
+	Daemon        DaemonHealth           `json:"daemon"`
+	NATS          NATSHealth             `json:"nats"`
+	Sessions      SessionHealthSummary   `json:"sessions"`
+	Components    ComponentHealthSummary `json:"components"`
+}
+
+type DaemonHealth struct {
+	PID       int    `json:"pid"`
+	MemoryRSS uint64 `json:"memory_rss_bytes"`
+}
+
+type NATSHealth struct {
+	Connected bool   `json:"connected"`
+	URL       string `json:"url"`
+}
+
+type SessionHealthSummary struct {
+	Total       int `json:"total"`
+	Running     int `json:"running"`
+	Initialized int `json:"initialized"`
+	Stopped     int `json:"stopped"`
+	Error       int `json:"error"`
+}
+
+type ComponentHealthSummary struct {
+	Total   int `json:"total"`
+	Running int `json:"running"`
+	Error   int `json:"error"`
+	Init    int `json:"init"`
+}
+
+// ── Session health ────────────────────────────────────────────────────────────
+
+type HealthSessionData struct {
+	Status     string               `json:"status"` // "healthy" | "degraded" | "inactive"
+	Session    SessionDetail        `json:"session"`
+	Components []ComponentHealthRef `json:"components"`
+	DataStream DataStreamHealth     `json:"data_stream"`
+	DataFiles  *DataFilesHealth     `json:"data_files,omitempty"` // only for historical mode
+}
+
+type ComponentHealthRef struct {
+	ID                 string  `json:"id"`
+	Name               string  `json:"name"`
+	State              string  `json:"state"`
+	UptimeSeconds      int64   `json:"uptime_seconds"`
+	SecsSinceHeartbeat float64 `json:"secs_since_heartbeat"`
+	HeartbeatOK        bool    `json:"heartbeat_ok"`
+	ConnectionActive   bool    `json:"connection_active"`
+}
+
+type DataStreamHealth struct {
+	SocketPath   string `json:"socket_path"`
+	SocketExists bool   `json:"socket_exists"`
+	TopicCount   int    `json:"topic_count"`
+}
+
+type DataFilesHealth struct {
+	DataPath     string   `json:"data_path"`
+	FilesFound   int      `json:"files_found"`
+	FilesMissing int      `json:"files_missing"`
+	Missing      []string `json:"missing,omitempty"`
+}
+
+// ── Component health ──────────────────────────────────────────────────────────
+
+type HealthComponentData struct {
+	Status             string    `json:"status"` // "healthy" | "degraded" | "inactive"
+	SessionID          string    `json:"session_id"`
+	ID                 string    `json:"id"`
+	Name               string    `json:"name"`
+	State              string    `json:"state"`
+	UptimeSeconds      int64     `json:"uptime_seconds"`
+	LastHeartbeat      time.Time `json:"last_heartbeat"`
+	SecsSinceHeartbeat float64   `json:"secs_since_heartbeat"`
+	HeartbeatOK        bool      `json:"heartbeat_ok"`
+	ConnectionActive   bool      `json:"connection_active"`
+}
+
 // ── Shared sub-types ──────────────────────────────────────────────────────────
 
 // ComponentRef is the minimal representation used inside session responses.

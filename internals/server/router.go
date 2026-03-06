@@ -18,7 +18,7 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
-func HandleAegis(conn net.Conn, sessionStore *core.SessionStore, nc *nats.Conn, logStore *servicescomponent.LogStore) {
+func HandleAegis(conn net.Conn, sessionStore *core.SessionStore, nc *nats.Conn, logStore *servicescomponent.LogStore, pool *servicescomponent.ConnectionPool) {
 	defer func(conn net.Conn) {
 		if err := conn.Close(); err != nil {
 			logger.Error(err)
@@ -84,13 +84,13 @@ func HandleAegis(conn net.Conn, sessionStore *core.SessionStore, nc *nats.Conn, 
 	// -- Health ----------------------------------------------------
 
 	case core.CommandHealthCheck:
-		handlers.HandleGlobalHealth(cmd.RequestID, conn, sessionStore)
+		handlers.HandleGlobalHealth(cmd, conn, sessionStore, nc)
 
 	case core.CommandHealthCheckSession:
-		handlers.HandleHealthCheck(cmd.RequestID, conn, sessionStore)
+		handlers.HandleHealthCheckSession(cmd, conn, sessionStore, pool)
 
 	case core.CommandHealthCheckComp:
-		handlers.HandleHealthCheck(cmd.RequestID, conn, sessionStore)
+		handlers.HandleHealthCheckComponent(cmd, conn, sessionStore, pool)
 
 	default:
 		logger.Warn("Unknown command:", cmd.Type)

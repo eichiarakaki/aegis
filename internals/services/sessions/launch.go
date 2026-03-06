@@ -13,8 +13,6 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-// logDir returns the directory where component log files are stored.
-// $XDG_STATE_HOME/aegis/logs/<session_id>/ or ~/.local/state/aegis/logs/<session_id>/
 func logDir(sessionID string) string {
 	base := os.Getenv("XDG_STATE_HOME")
 	if base == "" {
@@ -24,17 +22,16 @@ func logDir(sessionID string) string {
 	return filepath.Join(base, "aegis", "logs", sessionID)
 }
 
-// LogPath returns the log file path for a given session + component ID.
 func LogPath(sessionID, componentID string) string {
 	return filepath.Join(logDir(sessionID), componentID+".log")
 }
 
-// LaunchComponents launches all binaries stored in session.ComponentPaths.
-// stdout and stderr of each process are written to a rotating log file at
-// LogPath(sessionID, componentID). No NATS involvement — simple and robust.
+// LaunchComponents launches all binaries in session.ComponentEntries, passing
+// each process its pre-assigned AEGIS_COMPONENT_ID so HandleComponentConnection
+// can hydrate the existing placeholder instead of creating a duplicate entry.
 func LaunchComponents(session *core.Session) error {
-	paths := session.GetComponentPaths()
-	if len(paths) == 0 {
+	entries := session.GetComponentEntries()
+	if len(entries) == 0 {
 		logger.Warnf("Session %s has no attached components — skipping launch", session.ID)
 		return nil
 	}
@@ -50,10 +47,15 @@ func LaunchComponents(session *core.Session) error {
 	}
 
 	launched := 0
-	for _, path := range paths {
-		componentID := utils.GenerateComponentID()
+	for _, entry := range entries {
+		componentID := entry.ComponentID
+		if componentID == "" {
+			// Fallback for entries added via the old AddComponentPath path.
+			componentID = utils.GenerateComponentID()
+			logger.Warnf("launch: no pre-assigned ID for %s — generated %s", entry.Path, componentID)
+		}
 
-		cmd := exec.Command(path)
+		cmd := exec.Command(entry.Path)
 		cmd.Env = append(
 			os.Environ(),
 			fmt.Sprintf("AEGIS_SOCKET=%s", cfg.ComponentsSocket),
@@ -61,25 +63,23 @@ func LaunchComponents(session *core.Session) error {
 			fmt.Sprintf("AEGIS_COMPONENT_ID=%s", componentID),
 		)
 
-		// Rotating log file — max 50 MB, keep last 3 files, compress old ones.
 		logFile := &lumberjack.Logger{
 			Filename:   LogPath(session.ID, componentID),
-			MaxSize:    50, // MB
+			MaxSize:    50,
 			MaxBackups: 3,
 			Compress:   true,
 		}
-
 		cmd.Stdout = logFile
 		cmd.Stderr = logFile
 
 		if err := cmd.Start(); err != nil {
-			logger.Errorf("launch: failed to start %s: %s", path, err)
+			logger.Errorf("launch: failed to start %s: %s", entry.Path, err)
 			_ = logFile.Close()
 			continue
 		}
 
-		logger.Infof("Launched component %s (pid %d) → session %s | log: %s",
-			componentID, cmd.Process.Pid, session.ID, LogPath(session.ID, componentID))
+		logger.Infof("Launched %s (pid %d, id %s) → session %s",
+			entry.Path, cmd.Process.Pid, componentID, session.ID)
 
 		go func(lf *lumberjack.Logger) {
 			_ = cmd.Wait()
@@ -90,8 +90,7 @@ func LaunchComponents(session *core.Session) error {
 	}
 
 	if launched == 0 {
-		return fmt.Errorf("launch: all %d component(s) failed to start", len(paths))
+		return fmt.Errorf("launch: all %d component(s) failed to start", len(entries))
 	}
-
 	return nil
 }

@@ -49,9 +49,11 @@ func sendCommand(cmdType core.CLICommandType, payload interface{}) error {
 		fmt.Fprintln(os.Stderr, "[debug] daemon returned no response body")
 		return nil
 	}
-	// DEBUG: print raw JSON to stderr — remove once formatter is confirmed working
-	raw, _ := json.MarshalIndent(resp, "", "  ")
-	fmt.Fprintln(os.Stderr, string(raw))
+	
+	if core.DebugEnabled {
+		raw, _ := json.MarshalIndent(resp, "", "  ")
+		fmt.Fprintln(os.Stderr, string(raw))
+	}
 	prettyPrint(resp)
 	return nil
 }

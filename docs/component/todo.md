@@ -1,2 +1,2 @@
 
-- [x] Normalize component's ERR_CODEs
+- [ ] Handle running,stopping,stopped,finished states on the component side.
