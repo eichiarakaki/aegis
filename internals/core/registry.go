@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"sync"
 	"time"
 )
@@ -47,6 +48,24 @@ func (r *Registry) UpdateFromRegister(componentID, name, version string, caps Co
 	comp.Name = name
 	comp.Version = version
 	comp.Capabilities = caps
+	return nil
+}
+
+// ResetToRegistered forcibly resets a component's state to REGISTERED
+// regardless of its current state. Used when a component reconnects after
+// a crash — the normal state machine transitions don't apply here.
+func (r *Registry) ResetToRegistered(componentID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	comp, exists := r.components[componentID]
+	if !exists {
+		return NewValidationError(string(NOT_FOUND), "component not found")
+	}
+
+	comp.State = ComponentStateRegistered
+	comp.StartedAt = time.Now()
+	comp.LastHeartbeat = time.Now()
 	return nil
 }
 
@@ -167,4 +186,33 @@ func (r *Registry) Unregister(componentID string) error {
 
 	delete(r.components, componentID)
 	return nil
+}
+
+// RefreshHeartbeat resets LastHeartbeat to now. Called when a component
+// completes the handshake and becomes RUNNING, so the heartbeat monitor
+// starts the timeout clock from the moment the component is actually live
+// rather than from when the placeholder was created during attach.
+func (r *Registry) RefreshHeartbeat(componentID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	comp, exists := r.components[componentID]
+	if !exists {
+		return NewValidationError(string(NOT_FOUND), "component not found")
+	}
+
+	comp.LastHeartbeat = time.Now()
+	return nil
+}
+
+// IsNotFound returns true if the error is a ValidationError with code NOT_FOUND.
+func IsNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	var ve *ValidationError
+	if errors.As(err, &ve) {
+		return ve.Code == string(NOT_FOUND)
+	}
+	return false
 }

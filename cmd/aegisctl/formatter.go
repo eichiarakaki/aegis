@@ -123,7 +123,7 @@ func renderSessionAttach(data map[string]any) {
 }
 
 func renderSessionStart(data map[string]any) {
-	fmt.Printf("%s session %s  %s → %s\n",
+	fmt.Printf("%s session %s  %s -> %s\n",
 		green("[OK]"),
 		str(data["session_id"]),
 		stateTag(str(data["previous_state"])),
@@ -149,7 +149,7 @@ func renderSessionStart(data map[string]any) {
 }
 
 func renderSessionStop(data map[string]any) {
-	fmt.Printf("%s session %s  %s → %s\n",
+	fmt.Printf("%s session %s  %s -> %s\n",
 		green("[OK]"),
 		str(data["session_id"]),
 		stateTag(str(data["previous_state"])),
@@ -343,36 +343,104 @@ func renderComponentDescribe(data map[string]any) {
 // ── Health renderers ──────────────────────────────────────────────────────────
 
 func renderHealthGlobal(data map[string]any) {
-	fmt.Printf("%s health\n", green("[OK]"))
-	if data == nil || len(data) == 0 {
-		return
+	status := str(data["status"])
+	tag := green("[OK]")
+	if status == "degraded" {
+		tag = yellow("[DEGRADED]")
 	}
+	fmt.Printf("%s daemon  up %s\n", tag, fmtUptime(data["uptime_seconds"]))
+
+	if daemon, ok := data["daemon"].(map[string]any); ok {
+		fmt.Printf("  pid        : %v\n", daemon["pid"])
+		if rss, ok := daemon["memory_rss_bytes"].(float64); ok {
+			fmt.Printf("  memory     : %s\n", fmtBytes(uint64(rss)))
+		}
+	}
+
+	if nats, ok := data["nats"].(map[string]any); ok {
+		connected, _ := nats["connected"].(bool)
+		natsTag := green("connected")
+		if !connected {
+			natsTag = red("disconnected")
+		}
+		fmt.Printf("  nats       : %s", natsTag)
+		if url := str(nats["url"]); url != "" {
+			fmt.Printf("  %s", dim(url))
+		}
+		fmt.Println()
+	}
+
 	if sessions, ok := data["sessions"].(map[string]any); ok {
 		total, _ := sessions["total"].(float64)
 		running, _ := sessions["running"].(float64)
-		fmt.Printf("  sessions   : %d total, %d running\n", int(total), int(running))
+		errCount, _ := sessions["error"].(float64)
+		line := fmt.Sprintf("  sessions   : %d total  %d running", int(total), int(running))
+		if errCount > 0 {
+			line += "  " + red(fmt.Sprintf("%d error", int(errCount)))
+		}
+		fmt.Println(line)
 	}
+
 	if components, ok := data["components"].(map[string]any); ok {
 		total, _ := components["total"].(float64)
 		running, _ := components["running"].(float64)
-		fmt.Printf("  components : %d total, %d running\n", int(total), int(running))
-	}
-	if uptime := data["uptime_seconds"]; uptime != nil {
-		fmt.Printf("  daemon     : up %s\n", fmtUptime(uptime))
+		errCount, _ := components["error"].(float64)
+		init_, _ := components["init"].(float64)
+		line := fmt.Sprintf("  components : %d total  %d running  %d pending",
+			int(total), int(running), int(init_))
+		if errCount > 0 {
+			line += "  " + red(fmt.Sprintf("%d error", int(errCount)))
+		}
+		fmt.Println(line)
 	}
 }
 
 func renderHealthSession(data map[string]any) {
 	sess, _ := data["session"].(map[string]any)
 	if sess == nil {
-		fmt.Printf("%s health session\n", green("[OK]"))
 		return
 	}
-	fmt.Printf("%s session %q  %s\n",
-		green("[OK]"), str(sess["name"]), stateTag(str(sess["state"])))
+	status := str(data["status"])
+	tag := green("[OK]")
+	if status == "degraded" {
+		tag = red("[DEGRADED]")
+	} else if status == "inactive" {
+		tag = yellow("[INACTIVE]")
+	}
+
+	fmt.Printf("%s session %q  %s\n", tag, str(sess["name"]), stateTag(str(sess["state"])))
 	if up := sess["uptime_seconds"]; up != nil {
 		fmt.Printf("  uptime     : %s\n", fmtUptime(up))
 	}
+
+	if ds, ok := data["data_stream"].(map[string]any); ok {
+		socketOK, _ := ds["socket_exists"].(bool)
+		socketTag := green("ok")
+		if !socketOK && str(ds["socket_path"]) != "" {
+			socketTag = red("missing")
+		} else if str(ds["socket_path"]) == "" {
+			socketTag = dim("none")
+		}
+		topicCount, _ := ds["topic_count"].(float64)
+		fmt.Printf("  data stream: %s  %d topic(s)\n", socketTag, int(topicCount))
+	}
+
+	if df, ok := data["data_files"].(map[string]any); ok {
+		found, _ := df["files_found"].(float64)
+		missing, _ := df["files_missing"].(float64)
+		dfTag := green("ok")
+		if missing > 0 {
+			dfTag = red(fmt.Sprintf("%d missing", int(missing)))
+		}
+		fmt.Printf("  data files : %s  %d found  (%s)\n",
+			dfTag, int(found), dim(str(df["data_path"])))
+		if missingList, ok := df["missing"].([]any); ok && len(missingList) > 0 {
+			for _, m := range missingList {
+				fmt.Printf("    %s %s\n", red("✗"), dim(str(m)))
+			}
+		}
+	}
+
 	comps, _ := data["components"].([]any)
 	if len(comps) == 0 {
 		return
@@ -383,26 +451,74 @@ func renderHealthSession(data map[string]any) {
 		if !ok {
 			continue
 		}
-		fmt.Printf("    %s %s\n",
-			stateTag(str(firstOf(cm, "state", "State"))),
-			str(firstOf(cm, "name", "Name")),
+		hbOK, _ := cm["heartbeat_ok"].(bool)
+		connOK, _ := cm["connection_active"].(bool)
+		hbTag := green("♥")
+		if !hbOK {
+			hbTag = red("♥")
+		}
+		connStr := dim("no conn")
+		if connOK {
+			connStr = green("conn ok")
+		}
+		secs, _ := cm["secs_since_heartbeat"].(float64)
+		fmt.Printf("    %s %s %s  %s  hb %.0fs ago\n",
+			stateTag(str(cm["state"])),
+			bold(str(cm["name"])),
+			hbTag,
+			connStr,
+			secs,
 		)
 	}
 }
 
 func renderHealthComponent(data map[string]any) {
-	c, _ := data["component"].(map[string]any)
-	if c == nil {
-		fmt.Printf("%s health component\n", green("[OK]"))
-		return
+	status := str(data["status"])
+	tag := green("[OK]")
+	if status == "degraded" {
+		tag = red("[DEGRADED]")
+	} else if status == "inactive" {
+		tag = yellow("[INACTIVE]")
 	}
-	fmt.Printf("%s %s  %s\n",
-		green("[OK]"), str(c["name"]), stateTag(str(c["state"])))
-	if hb := str(c["last_heartbeat"]); hb != "" {
-		fmt.Printf("  last heartbeat : %s\n", fmtTime(hb))
+
+	fmt.Printf("%s component %q  %s\n", tag, str(data["name"]), stateTag(str(data["state"])))
+	fmt.Printf("  session    : %s\n", str(data["session_id"]))
+	fmt.Printf("  id         : %s\n", str(data["id"]))
+	if up := data["uptime_seconds"]; up != nil {
+		fmt.Printf("  uptime     : %s\n", fmtUptime(up))
 	}
-	if up := c["uptime_seconds"]; up != nil {
-		fmt.Printf("  uptime         : %s\n", fmtUptime(up))
+	if hb := str(data["last_heartbeat"]); hb != "" {
+		fmt.Printf("  heartbeat  : %s", fmtTime(hb))
+		if secs, ok := data["secs_since_heartbeat"].(float64); ok {
+			fmt.Printf("  (%.0fs ago)", secs)
+		}
+		fmt.Println()
+	}
+	hbOK, _ := data["heartbeat_ok"].(bool)
+	connOK, _ := data["connection_active"].(bool)
+	fmt.Printf("  hb status  : %s\n", boolTag(hbOK, "ok", "timeout"))
+	fmt.Printf("  connection : %s\n", boolTag(connOK, "active", "none"))
+}
+
+func boolTag(ok bool, okLabel, failLabel string) string {
+	if ok {
+		return green(okLabel)
+	}
+	return red(failLabel)
+}
+
+func fmtBytes(b uint64) string {
+	const (
+		MB = 1024 * 1024
+		KB = 1024
+	)
+	switch {
+	case b >= MB:
+		return fmt.Sprintf("%.1f MB", float64(b)/MB)
+	case b >= KB:
+		return fmt.Sprintf("%.1f KB", float64(b)/KB)
+	default:
+		return fmt.Sprintf("%d B", b)
 	}
 }
 

@@ -89,7 +89,7 @@ func InitDaemon() {
 				logger.Error("CLI connection error:", err)
 				continue
 			}
-			go HandleAegis(conn, sessionStore, nc, logStore)
+			go HandleAegis(conn, sessionStore, nc, logStore, pool)
 		}
 	}()
 

@@ -9,48 +9,52 @@ import (
 
 var healthCmd = &cobra.Command{
 	Use:   "health",
-	Short: "Health checks for Aegis subsystems",
+	Short: "Check daemon and component health",
 }
 
-var healthCheckCmd = &cobra.Command{
-	Use:   "check <target>",
-	Short: "Run a health check (all|data|sessions)",
-	Args:  cobra.ExactArgs(1),
-	Run:   runHealthCheck,
+var healthGlobalCmd = &cobra.Command{
+	Use:   "global",
+	Short: "Daemon-level health (NATS, sessions, components)",
+	Args:  cobra.NoArgs,
+	Run:   runHealthGlobal,
 }
 
 var healthSessionCmd = &cobra.Command{
-	Use:   "session <id>",
-	Short: "Health check for a specific session",
+	Use:   "session <session>",
+	Short: "Session health (components, data stream, data files)",
 	Args:  cobra.ExactArgs(1),
 	Run:   runHealthSession,
 }
 
 var healthComponentCmd = &cobra.Command{
-	Use:   "component <session_id> <component_id>",
-	Short: "Health check for a specific component",
-	Args:  cobra.ExactArgs(2),
+	Use:   "component <session> [component]",
+	Short: "Component health (heartbeat, connection)",
+	Args:  cobra.RangeArgs(1, 2),
 	Run:   runHealthComponent,
 }
 
-// ---- handlers ---------------------------------------------------------------
-
-func runHealthCheck(_ *cobra.Command, args []string) {
-	if err := sendCommand(core.CommandHealthCheck, core.HealthCheckPayload{Target: args[0]}); err != nil {
+func runHealthGlobal(_ *cobra.Command, _ []string) {
+	if err := sendCommand(core.CommandHealthCheck, struct{}{}); err != nil {
 		log.Fatal(err)
 	}
 }
 
 func runHealthSession(_ *cobra.Command, args []string) {
-	if err := sendCommand(core.CommandHealthCheckSession, core.HealthCheckSessionPayload{SessionID: args[0]}); err != nil {
+	if err := sendCommand(core.CommandHealthCheckSession, core.SessionActionPayload{
+		SessionID: args[0],
+	}); err != nil {
 		log.Fatal(err)
 	}
 }
 
 func runHealthComponent(_ *cobra.Command, args []string) {
-	if err := sendCommand(core.CommandHealthCheckComp, core.HealthCheckComponentPayload{
+	ref := ""
+	if len(args) == 2 {
+		ref = args[1]
+	}
+	if err := sendCommand(core.CommandHealthCheckComp, core.ComponentGetPayload{
 		SessionID:   args[0],
-		ComponentID: args[1],
+		ComponentID: ref,
 	}); err != nil {
 		log.Fatal(err)
 	}

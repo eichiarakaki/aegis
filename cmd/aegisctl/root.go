@@ -35,7 +35,7 @@ func init() {
 
 	// Health sub-tree
 	rootCmd.AddCommand(healthCmd)
-	healthCmd.AddCommand(healthCheckCmd)
+	healthCmd.AddCommand(healthGlobalCmd)
 	healthCmd.AddCommand(healthSessionCmd)
 	healthCmd.AddCommand(healthComponentCmd)
 }

@@ -132,5 +132,11 @@ func (m *HeartbeatMonitor) handleDeadComponent(
 		log.Errorf("Failed to unregister dead component: %s", err.Error())
 	}
 
+	// Ignore NOT_FOUND — handleComponentLifecycle may have already unregistered
+	// the component when it detected the connection drop concurrently.
+	if err := registry.Unregister(comp.ID); err != nil && !core.IsNotFound(err) {
+		log.Errorf("Failed to unregister dead component: %s", err.Error())
+	}
+
 	log.Infof("Dead component fully cleaned up")
 }
