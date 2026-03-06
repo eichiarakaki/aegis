@@ -35,60 +35,60 @@ func HandleAegis(conn net.Conn, sessionStore *core.SessionStore, nc *nats.Conn, 
 
 	switch cmd.Type {
 
-	case "DAEMON_SHUTDOWN":
+	case core.CommandDaemonShutdown:
 		handlers.HandleDaemonShutdown(cmd, conn, sessionStore)
 
-	case "DAEMON_KILL":
+	case core.CommandDaemonKill:
 		handlers.HandleDaemonKill(cmd.RequestID, conn)
 
 	// -- Session lifecycle ------------------------------------------
 
-	case "SESSION_CREATE":
+	case core.CommandSessionCreate:
 		sessions.HandleSessionCreate(cmd, conn, sessionStore)
 
-	case "SESSION_ATTACH":
+	case core.CommandSessionAttach:
 		sessions.HandleSessionAttach(cmd, conn, sessionStore)
 
-	case "SESSION_START":
+	case core.CommandSessionStart:
 		sessions.HandleSessionStart(cmd, conn, sessionStore, nc, logStore)
 
-	case "SESSION_STOP":
+	case core.CommandSessionStop:
 		sessions.HandleSessionStop(cmd, conn, sessionStore)
 
-	case "SESSION_LIST":
+	case core.CommandSessionList:
 		sessions.HandleSessionList(cmd, conn, sessionStore)
 
-	case "SESSION_STATE":
+	case core.CommandSessionState:
 		sessions.HandleSessionState(cmd, conn, sessionStore)
 
-	case "SESSION_DELETE":
+	case core.CommandSessionDelete:
 		sessions.HandleSessionDelete(cmd, conn, sessionStore)
 
 	// -- Component inspection --------------------------------------
 
-	case "COMPONENT_LIST":
+	case core.CommandComponentList:
 		component.HandleComponentList(cmd, conn, sessionStore)
 
-	case "COMPONENT_GET":
+	case core.CommandComponentGet:
 		component.HandleComponentGet(cmd, conn, sessionStore)
 
-	case "COMPONENT_DESCRIBE":
+	case core.CommandComponentDescribe:
 		component.HandleComponentDescribe(cmd, conn, sessionStore)
 
-	case "COMPONENT_LOGS":
+	case core.CommandComponentLogs:
 		component.HandleComponentLogs(cmd, conn, sessionStore, nc, logStore)
-	case "COMPONENT_LOG_PATH":
+	case core.CommandComponentLogPath:
 		component.HandleComponentLogPath(cmd, conn, sessionStore)
 
 	// -- Health ----------------------------------------------------
 
-	case "HEALTH_CHECK":
+	case core.CommandHealthCheck:
 		handlers.HandleGlobalHealth(cmd.RequestID, conn, sessionStore)
 
-	case "HEALTH_CHECK_SESSION":
+	case core.CommandHealthCheckSession:
 		handlers.HandleHealthCheck(cmd.RequestID, conn, sessionStore)
 
-	case "HEALTH_CHECK_COMPONENT":
+	case core.CommandHealthCheckComp:
 		handlers.HandleHealthCheck(cmd.RequestID, conn, sessionStore)
 
 	default:

@@ -1,9 +1,9 @@
 package core
 
 type Command struct {
-	RequestID string      `json:"request_id"`
-	Type      string      `json:"type"`
-	Payload   interface{} `json:"payload"`
+	RequestID string         `json:"request_id"`
+	Type      CLICommandType `json:"type"`
+	Payload   interface{}    `json:"payload"`
 }
 
 // Specific payload for each command

@@ -1,2 +1,2 @@
 
-- [] Normalize component's ERR_CODEs
+- [x] Normalize component's ERR_CODEs

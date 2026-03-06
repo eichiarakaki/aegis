@@ -1,29 +1,29 @@
-package component
+package core
 
 import (
 	"sync"
 	"time"
 )
 
-// ComponentRegistry Manages all the registered components
-type ComponentRegistry struct {
+// Registry Manages all the registered components
+type Registry struct {
 	components map[string]*Component // componentID -> Component
 	mu         sync.RWMutex
 }
 
-func NewComponentRegistry() *ComponentRegistry {
-	return &ComponentRegistry{
+func NewComponentRegistry() *Registry {
+	return &Registry{
 		components: make(map[string]*Component),
 	}
 }
 
 // Register adds a component to the register
-func (r *ComponentRegistry) Register(comp *Component) error {
+func (r *Registry) Register(comp *Component) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	if _, exists := r.components[comp.ID]; exists {
-		return NewValidationError("ALREADY_REGISTERED", "component already registered")
+		return NewValidationError(string(CommandAlreadyRegistered), "component already registered")
 	}
 
 	comp.StartedAt = time.Now()
@@ -33,8 +33,8 @@ func (r *ComponentRegistry) Register(comp *Component) error {
 	return nil
 }
 
-// Get obtiene un componente por ID
-func (r *ComponentRegistry) Get(componentID string) (*Component, bool) {
+// Get gets a component by ID
+func (r *Registry) Get(componentID string) (*Component, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -42,8 +42,8 @@ func (r *ComponentRegistry) Get(componentID string) (*Component, bool) {
 	return comp, exists
 }
 
-// GetBySession obtiene todos los componentes de una sesión
-func (r *ComponentRegistry) GetBySession(sessionID string) []*Component {
+// GetBySession gets all the components of a session
+func (r *Registry) GetBySession(sessionID string) []*Component {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -58,7 +58,7 @@ func (r *ComponentRegistry) GetBySession(sessionID string) []*Component {
 }
 
 // List returns all registered components.
-func (r *ComponentRegistry) List() []*Component {
+func (r *Registry) List() []*Component {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -69,8 +69,8 @@ func (r *ComponentRegistry) List() []*Component {
 	return components
 }
 
-// Counts the amount of registered.
-func (r *ComponentRegistry) Count() int {
+// Count the amount of registered.
+func (r *Registry) Count() int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -78,7 +78,7 @@ func (r *ComponentRegistry) Count() int {
 }
 
 // GetByName retrieves a component by name and session.
-func (r *ComponentRegistry) GetByName(sessionID, componentName string) (*Component, bool) {
+func (r *Registry) GetByName(sessionID, componentName string) (*Component, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -92,18 +92,18 @@ func (r *ComponentRegistry) GetByName(sessionID, componentName string) (*Compone
 }
 
 // UpdateState updates the component's state
-func (r *ComponentRegistry) UpdateState(componentID string, state ComponentState) error {
+func (r *Registry) UpdateState(componentID string, state ForeignComponentState) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	comp, exists := r.components[componentID]
 	if !exists {
-		return NewValidationError("NOT_FOUND", "component not found")
+		return NewValidationError(string(NOT_FOUND), "component not found")
 	}
 
 	// validates the transition
 	if !isValidStateTransition(comp.State, state) {
-		return NewValidationError("INVALID_STATE_TRANSITION", "invalid state transition")
+		return NewValidationError(string(INVALID_STATE_TRANSITION), "invalid state transition")
 	}
 
 	comp.State = state
@@ -111,7 +111,7 @@ func (r *ComponentRegistry) UpdateState(componentID string, state ComponentState
 }
 
 // GetByState retrieves all components with a specific state.
-func (r *ComponentRegistry) GetByState(state ComponentState) []*Component {
+func (r *Registry) GetByState(state ForeignComponentState) []*Component {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -125,14 +125,14 @@ func (r *ComponentRegistry) GetByState(state ComponentState) []*Component {
 	return components
 }
 
-// UpdateHeartbeat registra el último heartbeat
-func (r *ComponentRegistry) UpdateHeartbeat(componentID string) error {
+// UpdateHeartbeat registers the last heartbeat
+func (r *Registry) UpdateHeartbeat(componentID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	comp, exists := r.components[componentID]
 	if !exists {
-		return NewValidationError("NOT_FOUND", "component not found")
+		return NewValidationError(string(NOT_FOUND), "component not found")
 	}
 
 	comp.LastHeartbeat = time.Now()
@@ -140,12 +140,12 @@ func (r *ComponentRegistry) UpdateHeartbeat(componentID string) error {
 }
 
 // Unregister removes a component
-func (r *ComponentRegistry) Unregister(componentID string) error {
+func (r *Registry) Unregister(componentID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	if _, exists := r.components[componentID]; !exists {
-		return NewValidationError("NOT_FOUND", "component not found")
+		return NewValidationError(string(NOT_FOUND), "component not found")
 	}
 
 	delete(r.components, componentID)

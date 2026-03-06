@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/eichiarakaki/aegis/internals/core"
-	"github.com/eichiarakaki/aegis/internals/core/component"
 	"github.com/eichiarakaki/aegis/internals/logger"
 	"github.com/eichiarakaki/aegis/internals/orchestrator"
 	"github.com/nats-io/nats.go"
@@ -135,8 +134,8 @@ func waitForComponents(session *core.Session, expected int, timeout time.Duratio
 
 	for time.Now().Before(deadline) {
 		<-ticker.C
-		configured := session.Registry.GetByState(component.ComponentStateConfigured)
-		running := session.Registry.GetByState(component.ComponentStateRunning)
+		configured := session.Registry.GetByState(core.ComponentStateConfigured)
+		running := session.Registry.GetByState(core.ComponentStateRunning)
 		if len(configured)+len(running) >= expected {
 			logger.Infof("Session %s: %d/%d component(s) ready",
 				session.ID, len(configured)+len(running), expected)
@@ -144,8 +143,8 @@ func waitForComponents(session *core.Session, expected int, timeout time.Duratio
 		}
 	}
 
-	configured := session.Registry.GetByState(component.ComponentStateConfigured)
-	running := session.Registry.GetByState(component.ComponentStateRunning)
+	configured := session.Registry.GetByState(core.ComponentStateConfigured)
+	running := session.Registry.GetByState(core.ComponentStateRunning)
 	logger.Warnf("Session %s: timeout after %s — %d/%d component(s) ready, starting orchestrator anyway",
 		session.ID, timeout, len(configured)+len(running), expected)
 }

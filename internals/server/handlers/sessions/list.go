@@ -11,8 +11,8 @@ func HandleSessionList(cmd core.Command, conn net.Conn, sessionStore *core.Sessi
 	if sessionStore.Count() == 0 {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "SESSION_LIST",
-			Status:    "ok",
+			Command:   core.CommandSessionList,
+			Status:    core.ERROR,
 			//ErrorCode: "",
 			Message: "There are 0 sessions at the moment",
 			Data:    nil,
@@ -22,8 +22,8 @@ func HandleSessionList(cmd core.Command, conn net.Conn, sessionStore *core.Sessi
 
 	core.WriteJSON(conn, core.Response{
 		RequestID: cmd.RequestID,
-		Command:   "COMPONENT_LIST",
-		Status:    "ok",
+		Command:   core.CommandSessionList,
+		Status:    core.OK,
 		//ErrorCode: "",
 		//Message:   "",
 		Data: data,

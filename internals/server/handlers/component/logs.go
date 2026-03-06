@@ -116,9 +116,9 @@ func HandleComponentLogs(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "COMPONENT_LOGS",
-			Status:    "error",
-			ErrorCode: "INVALID_PAYLOAD",
+			Command:   core.CommandComponentLogs,
+			Status:    core.ERROR,
+			ErrorCode: core.INVALID_PAYLOAD,
 			Message:   "failed to decode payload",
 		})
 		return
@@ -131,9 +131,9 @@ func HandleComponentLogs(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 	if !ok {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "COMPONENT_LOGS",
-			Status:    "error",
-			ErrorCode: "SESSION_NOT_FOUND",
+			Command:   core.CommandComponentLogs,
+			Status:    core.ERROR,
+			ErrorCode: core.SESSION_NOT_FOUND,
 			Message:   "session not found: " + payload.SessionID,
 		})
 		return
@@ -147,9 +147,9 @@ func HandleComponentLogs(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 	if !exists {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "COMPONENT_LOGS",
-			Status:    "error",
-			ErrorCode: "COMPONENT_NOT_FOUND",
+			Command:   core.CommandComponentLogs,
+			Status:    core.ERROR,
+			ErrorCode: core.COMPONENT_NOT_FOUND,
 			Message:   "component not found: " + payload.ComponentID,
 		})
 		return
@@ -160,8 +160,8 @@ func HandleComponentLogs(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 
 	core.WriteJSON(conn, core.Response{
 		RequestID: cmd.RequestID,
-		Command:   "COMPONENT_LOGS",
-		Status:    "ok",
+		Command:   core.CommandComponentLogs,
+		Status:    core.OK,
 		Message:   "streaming",
 		Data: map[string]any{
 			"component_id":   comp.ID,
@@ -203,9 +203,9 @@ func HandleComponentLogs(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 		log.Errorf("Failed to subscribe to %s: %v", subject, err)
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "COMPONENT_LOGS",
-			Status:    "error",
-			ErrorCode: "NATS_SUBSCRIBE_FAILED",
+			Command:   core.CommandComponentLogs,
+			Status:    core.ERROR,
+			ErrorCode: core.NATS_SUBSCRIBE_FAILED,
 			Message:   err.Error(),
 		})
 		return

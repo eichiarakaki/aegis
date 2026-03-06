@@ -19,8 +19,8 @@ func HandleComponentGet(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 	if err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "COMPONENT_GET",
-			Status:    "error",
+			Command:   core.CommandComponentGet,
+			Status:    core.ERROR,
 			Message:   "Invalid payload format",
 		})
 		return
@@ -29,8 +29,8 @@ func HandleComponentGet(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "COMPONENT_GET",
-			Status:    "error",
+			Command:   core.CommandComponentGet,
+			Status:    core.ERROR,
 			Message:   fmt.Sprintf("Payload parsing error: %s", err.Error()),
 		})
 		return
@@ -43,20 +43,20 @@ func HandleComponentGet(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 	if err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "COMPONENT_GET",
-			Status:    "error",
+			Command:   core.CommandComponentGet,
+			Status:    core.ERROR,
 			Message:   err.Error(),
 		})
 		return
 	}
 
 	// Getting component
-	data, err := components.ComponentGet(session, payload.ComponentID)
+	data, err := components.Get(session, payload.ComponentID)
 	if err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "COMPONENT_GET",
-			Status:    "error",
+			Command:   core.CommandComponentGet,
+			Status:    core.ERROR,
 			Message:   fmt.Sprintf("Couldn't get component data: %s", err.Error()),
 		})
 		return
@@ -64,8 +64,8 @@ func HandleComponentGet(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 
 	core.WriteJSON(conn, core.Response{
 		RequestID: cmd.RequestID,
-		Command:   "COMPONENT_GET",
-		Status:    "ok",
+		Command:   core.CommandComponentGet,
+		Status:    core.OK,
 		Data:      data,
 	})
 }

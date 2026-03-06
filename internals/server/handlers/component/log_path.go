@@ -19,9 +19,9 @@ func HandleComponentLogPath(cmd core.Command, conn net.Conn, sessionStore *core.
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "COMPONENT_LOG_PATH",
-			Status:    "error",
-			ErrorCode: "INVALID_PAYLOAD",
+			Command:   core.CommandComponentLogPath,
+			Status:    core.ERROR,
+			ErrorCode: core.INVALID_PAYLOAD,
 			Message:   err.Error(),
 		})
 		return
@@ -31,9 +31,9 @@ func HandleComponentLogPath(cmd core.Command, conn net.Conn, sessionStore *core.
 	if err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "COMPONENT_LOG_PATH",
-			Status:    "error",
-			ErrorCode: "SESSION_NOT_FOUND",
+			Command:   core.CommandComponentLogPath,
+			Status:    core.ERROR,
+			ErrorCode: core.SESSION_NOT_FOUND,
 			Message:   "session not found: " + payload.SessionID,
 		})
 		return
@@ -47,9 +47,9 @@ func HandleComponentLogPath(cmd core.Command, conn net.Conn, sessionStore *core.
 	if !exists {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "COMPONENT_LOG_PATH",
-			Status:    "error",
-			ErrorCode: "COMPONENT_NOT_FOUND",
+			Command:   core.CommandComponentLogPath,
+			Status:    core.ERROR,
+			ErrorCode: core.COMPONENT_NOT_FOUND,
 			Message:   "component not found: " + payload.ComponentID,
 		})
 		return
@@ -60,8 +60,8 @@ func HandleComponentLogPath(cmd core.Command, conn net.Conn, sessionStore *core.
 
 	core.WriteJSON(conn, core.Response{
 		RequestID: cmd.RequestID,
-		Command:   "COMPONENT_LOG_PATH",
-		Status:    "ok",
+		Command:   core.CommandComponentLogPath,
+		Status:    core.OK,
 		Data:      logPath,
 	})
 }

@@ -33,7 +33,7 @@ func AttachComponents(session *core.Session, paths []string) ([]string, error) {
 	if currentState != core.SessionInitialized && currentState != core.SessionStopped {
 		return nil, fmt.Errorf(
 			"cannot attach components: session must be INITIALIZED or STOPPED, got %s",
-			core.SessionStateToString(currentState),
+			string(currentState),
 		)
 	}
 

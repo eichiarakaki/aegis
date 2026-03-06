@@ -2,8 +2,8 @@ package component
 
 import "github.com/eichiarakaki/aegis/internals/core"
 
-// ComponentGet will display all the properties correctly only if it's connected to the aegis-component.sock
-func ComponentGet(session *core.Session, componentID string) (map[string]any, error) {
+// Get will display all the properties correctly only if it's connected to the aegis-component.sock
+func Get(session *core.Session, componentID string) (map[string]any, error) {
 	// TODO: Fix this shii
 
 	data := map[string]any{

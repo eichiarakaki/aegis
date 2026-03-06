@@ -18,8 +18,8 @@ func HandleDaemonShutdown(cmd core.Command, conn net.Conn, sessionStore *core.Se
 	if err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   "DAEMON_KILL",
-			Status:    "error",
+			Command:   core.CommandDaemonShutdown,
+			Status:    core.ERROR,
 			Message:   fmt.Sprintf("Error killing the process: %s", err.Error()),
 			Data:      nil,
 		})
@@ -32,8 +32,8 @@ func HandleDaemonKill(requestID string, conn net.Conn) {
 	if err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: requestID,
-			Command:   "DAEMON_KILL",
-			Status:    "error",
+			Command:   core.CommandDaemonKill,
+			Status:    core.ERROR,
 			Message:   fmt.Sprintf("Error killing the process: %s", err.Error()),
 			Data:      nil,
 		})
@@ -42,8 +42,8 @@ func HandleDaemonKill(requestID string, conn net.Conn) {
 
 	core.WriteJSON(conn, core.Response{
 		RequestID: requestID,
-		Command:   "DAEMON_KILL",
-		Status:    "ok",
+		Command:   core.CommandDaemonKill,
+		Status:    core.OK,
 		Data:      nil,
 	})
 }

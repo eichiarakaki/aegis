@@ -4,7 +4,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/eichiarakaki/aegis/internals/core/component"
 	"github.com/google/uuid"
 
 	"github.com/eichiarakaki/aegis/internals/core"
@@ -17,7 +16,7 @@ func HandleGlobalHealth(requestID string, conn net.Conn, store *core.SessionStor
 	runningSessions := store.CountByState(core.SessionRunning)
 
 	totalComponents := store.TotalComponents()
-	runningComponents := store.TotalComponentsByStateFromAllSessions(component.ComponentStateRunning)
+	runningComponents := store.TotalComponentsByStateFromAllSessions(core.ComponentStateRunning)
 
 	data := map[string]interface{}{
 		"daemon": map[string]interface{}{
@@ -39,8 +38,8 @@ func HandleGlobalHealth(requestID string, conn net.Conn, store *core.SessionStor
 
 	core.WriteJSON(conn, core.Response{
 		RequestID: requestID,
-		Command:   "HEALTH_CHECK",
-		Status:    "ok",
+		Command:   core.CommandHealthCheck,
+		Status:    core.OK,
 		Data:      data,
 	})
 }
@@ -49,9 +48,9 @@ func HandleSessionHealth(requestID string, conn net.Conn, store *core.SessionSto
 	// Implement parsing real payload later
 	core.WriteJSON(conn, core.Response{
 		RequestID: requestID,
-		Command:   "HEALTH_CHECK_SESSION",
-		Status:    "error",
-		ErrorCode: "NOT_IMPLEMENTED",
+		Command:   core.CommandHealthCheckSession,
+		Status:    core.ERROR,
+		ErrorCode: core.NOT_IMPLEMENTED,
 		Message:   "Session health not implemented yet",
 		Data:      map[string]interface{}{},
 	})
@@ -60,9 +59,9 @@ func HandleSessionHealth(requestID string, conn net.Conn, store *core.SessionSto
 func HandleComponentHealth(requestID string, conn net.Conn, store *core.SessionStore) {
 	core.WriteJSON(conn, core.Response{
 		RequestID: requestID,
-		Command:   "HEALTH_CHECK_COMPONENT",
-		Status:    "error",
-		ErrorCode: "NOT_IMPLEMENTED",
+		Command:   core.CommandHealthCheckComp,
+		Status:    core.ERROR,
+		ErrorCode: core.NOT_IMPLEMENTED,
 		Message:   "Component health not implemented yet",
 		Data:      map[string]interface{}{},
 	})
@@ -87,9 +86,9 @@ func HandleHealthCheck(target string, conn net.Conn, store *core.SessionStore) {
 	default:
 		core.WriteJSON(conn, core.Response{
 			RequestID: requestID,
-			Command:   "HEALTH_CHECK",
-			Status:    "error",
-			ErrorCode: "INVALID_TARGET",
+			Command:   core.CommandHealthCheck,
+			Status:    core.ERROR,
+			ErrorCode: core.INVALID_TARGET,
 			Message:   "Invalid health target",
 			Data:      map[string]interface{}{},
 		})
