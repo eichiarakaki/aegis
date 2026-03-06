@@ -5,10 +5,11 @@ import (
 	"net"
 )
 
+// Response structure to the aegisctl
 type Response struct {
 	RequestID string         `json:"request_id"`
 	Command   CLICommandType `json:"command"`
-	Status    ForeignType    `json:"status"` // ok | error
+	Status    ForeignType    `json:"status"`
 	ErrorCode ErrorCode      `json:"error_code,omitempty"`
 	Message   string         `json:"message,omitempty"`
 	Data      any            `json:"data"`

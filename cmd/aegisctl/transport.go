@@ -42,8 +42,8 @@ func requestJSON(cmdType core.CLICommandType, payload interface{}) (map[string]a
 	return response, nil
 }
 
-// sendCommand is a convenience wrapper around requestJSON that pretty-prints
-// any non-nil response to stdout.
+// sendCommand is a convenience wrapper around requestJSON that renders the
+// response using the human-friendly prettyPrint formatter.
 func sendCommand(cmdType core.CLICommandType, payload interface{}) error {
 	resp, err := requestJSON(cmdType, payload)
 	if err != nil {
@@ -52,8 +52,6 @@ func sendCommand(cmdType core.CLICommandType, payload interface{}) error {
 	if resp == nil {
 		return nil
 	}
-
-	pretty, _ := json.MarshalIndent(resp, "", "  ")
-	fmt.Println(string(pretty))
+	prettyPrint(resp)
 	return nil
 }
