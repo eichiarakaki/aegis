@@ -10,17 +10,33 @@ import (
 )
 
 const (
-	ansiReset = "\033[0m"
-	ansiBold  = "\033[1m"
-	ansiDim   = "\033[2m"
-	ansiGreen = "\033[32m"
-	ansiRed   = "\033[31m"
+	ansiReset  = "\033[0m"
+	ansiBold   = "\033[1m"
+	ansiDim    = "\033[2m"
+	ansiGreen  = "\033[32m"
+	ansiYellow = "\033[33m"
+	ansiRed    = "\033[31m"
 )
 
-func bold(s string) string  { return ansiBold + s + ansiReset }
-func dim(s string) string   { return ansiDim + s + ansiReset }
-func green(s string) string { return ansiGreen + s + ansiReset }
-func red(s string) string   { return ansiRed + s + ansiReset }
+func bold(s string) string   { return ansiBold + s + ansiReset }
+func dim(s string) string    { return ansiDim + s + ansiReset }
+func green(s string) string  { return ansiGreen + s + ansiReset }
+func yellow(s string) string { return ansiYellow + s + ansiReset }
+func red(s string) string    { return ansiRed + s + ansiReset }
+
+func stateTag(s string) string {
+	upper := strings.ToUpper(s)
+	switch upper {
+	case "RUNNING":
+		return green(upper)
+	case "STOPPED", "STOPPING", "ERROR":
+		return red(upper)
+	case "INITIALIZED":
+		return yellow(upper)
+	default:
+		return dim(upper)
+	}
+}
 
 func prettyPrint(resp map[string]any) {
 	status, _ := resp["status"].(string)
@@ -82,7 +98,7 @@ func renderSessionCreate(data map[string]any) {
 	fmt.Printf("%s session %q created\n", green("[OK]"), str(sess["name"]))
 	fmt.Printf("  id      : %s\n", str(sess["id"]))
 	fmt.Printf("  mode    : %s\n", str(sess["mode"]))
-	fmt.Printf("  state   : %s\n", str(sess["state"]))
+	fmt.Printf("  state   : %s\n", stateTag(str(sess["state"])))
 }
 
 func renderSessionAttach(data map[string]any) {
@@ -113,7 +129,7 @@ func renderSessionStart(data map[string]any) {
 		id := str(firstOf(cm, "ID", "id"))
 		state := str(firstOf(cm, "State", "state"))
 		ver := str(firstOf(cm, "Version", "version"))
-		fmt.Printf("    [%s] %s (%s) v%s\n", state, name, id, ver)
+		fmt.Printf("    %s %s %s v%s\n", stateTag(state), bold(name), dim(id), ver)
 
 		if caps, ok := cm["Capabilities"].(map[string]any); ok {
 			if streams, ok := caps["requires_streams"].([]any); ok {
@@ -148,29 +164,39 @@ func renderSessionList(data map[string]any) {
 		if !ok {
 			continue
 		}
-		fmt.Printf("\n  [%s] %s (%s)  mode=%s\n",
-			str(sess["state"]),
+
+		// Each session gets a blank line separator + bold header line
+		fmt.Println()
+		fmt.Printf("  %s %s %s  mode=%s\n",
+			stateTag(str(sess["state"])),
 			bold(str(sess["name"])),
-			str(sess["id"]),
+			dim("("+str(sess["id"])+")"),
 			str(sess["mode"]),
 		)
+
 		if s := str(sess["started_at"]); s != "" {
-			fmt.Printf("    started : %s\n", fmtTime(s))
+			fmt.Printf("  %-10s %s\n", dim("started"), fmtTime(s))
 		}
+
+		// Topics: one per line, indented, so wrapping never corrupts structure
 		if topics, ok := sess["topics"].([]any); ok && len(topics) > 0 {
-			fmt.Printf("    topics  : %s\n", joinAny(topics))
+			fmt.Printf("  %-10s (%d)\n", dim("topics"), len(topics))
+			for _, t := range topics {
+				fmt.Printf("    %s\n", dim(str(t)))
+			}
 		}
+
 		if comps, ok := sess["components"].([]any); ok && len(comps) > 0 {
-			fmt.Printf("    components (%d):\n", len(comps))
+			fmt.Printf("  %-10s (%d)\n", dim("components"), len(comps))
 			for _, c := range comps {
 				cm, ok := c.(map[string]any)
 				if !ok {
 					continue
 				}
-				fmt.Printf("      [%s] %s (%s)\n",
-					str(firstOf(cm, "State", "state")),
-					str(firstOf(cm, "Name", "name")),
-					str(firstOf(cm, "ID", "id")),
+				fmt.Printf("    %s %s %s\n",
+					stateTag(str(firstOf(cm, "State", "state"))),
+					bold(str(firstOf(cm, "Name", "name"))),
+					dim("("+str(firstOf(cm, "ID", "id"))+")"),
 				)
 			}
 		}
@@ -201,10 +227,10 @@ func renderComponentList(data map[string]any) {
 		if !ok {
 			continue
 		}
-		fmt.Printf("  [%s] %s (%s) v%s\n",
-			str(firstOf(cm, "State", "state")),
-			str(firstOf(cm, "Name", "name")),
-			str(firstOf(cm, "ID", "id")),
+		fmt.Printf("  %s %s %s v%s\n",
+			stateTag(str(firstOf(cm, "State", "state"))),
+			bold(str(firstOf(cm, "Name", "name"))),
+			dim("("+str(firstOf(cm, "ID", "id"))+")"),
 			str(firstOf(cm, "Version", "version")),
 		)
 	}
@@ -239,7 +265,14 @@ func printKVMap(m map[string]any, indent string) {
 			fmt.Printf("%s%s:\n", indent, k)
 			printKVMap(vv, indent+"  ")
 		case []any:
-			fmt.Printf("%s%s: %s\n", indent, k, joinAny(vv))
+			fmt.Printf("%s%s: (%d)\n", indent, k, len(vv))
+			for _, item := range vv {
+				if mm, ok := item.(map[string]any); ok {
+					printKVMap(mm, indent+"  ")
+				} else {
+					fmt.Printf("%s  %s\n", indent, str(item))
+				}
+			}
 		default:
 			fmt.Printf("%s%s: %v\n", indent, k, v)
 		}
