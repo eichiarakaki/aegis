@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Flags for the logs subcommand.
 var (
 	logFollow bool
 	logAll    bool
@@ -19,29 +18,29 @@ var componentCmd = &cobra.Command{
 }
 
 var componentListCmd = &cobra.Command{
-	Use:   "list <session_id>",
-	Short: "List components in a session",
+	Use:   "list <session>",
+	Short: "List all components in a session",
 	Args:  cobra.ExactArgs(1),
 	Run:   runComponentList,
 }
 
 var componentGetCmd = &cobra.Command{
-	Use:   "get <session_id> <component_id>",
-	Short: "Get raw component info",
-	Args:  cobra.ExactArgs(2),
+	Use:   "get <session> [component]",
+	Short: "Get component info (omit component name if only one exists)",
+	Args:  cobra.RangeArgs(1, 2),
 	Run:   runComponentGet,
 }
 
 var componentDescribeCmd = &cobra.Command{
-	Use:   "describe <session_id>",
-	Short: "Describe all components in a session",
-	Args:  cobra.ExactArgs(1),
+	Use:   "describe <session> [component]",
+	Short: "Describe a component in detail (omit component name if only one exists)",
+	Args:  cobra.RangeArgs(1, 2),
 	Run:   runComponentDescribe,
 }
 
 var componentLogsCmd = &cobra.Command{
-	Use:   "logs <session_id> <component_id|name>",
-	Short: "Stream logs for a component (similar to docker logs)",
+	Use:   "logs <session> <component>",
+	Short: "Stream logs for a component",
 	Args:  cobra.ExactArgs(2),
 	Run:   runComponentLogs,
 }
@@ -49,22 +48,35 @@ var componentLogsCmd = &cobra.Command{
 // ---- handlers ---------------------------------------------------------------
 
 func runComponentList(_ *cobra.Command, args []string) {
-	if err := sendCommand(core.CommandComponentList, core.ComponentListPayload{SessionID: args[0]}); err != nil {
+	if err := sendCommand(core.CommandComponentList, core.ComponentListPayload{
+		SessionID: args[0],
+	}); err != nil {
 		log.Fatal(err)
 	}
 }
 
 func runComponentGet(_ *cobra.Command, args []string) {
+	componentRef := ""
+	if len(args) == 2 {
+		componentRef = args[1]
+	}
 	if err := sendCommand(core.CommandComponentGet, core.ComponentGetPayload{
 		SessionID:   args[0],
-		ComponentID: args[1],
+		ComponentID: componentRef,
 	}); err != nil {
 		log.Fatal(err)
 	}
 }
 
 func runComponentDescribe(_ *cobra.Command, args []string) {
-	if err := sendCommand(core.CommandComponentDescribe, core.ComponentListPayload{SessionID: args[0]}); err != nil {
+	componentRef := ""
+	if len(args) == 2 {
+		componentRef = args[1]
+	}
+	if err := sendCommand(core.CommandComponentDescribe, core.ComponentGetPayload{
+		SessionID:   args[0],
+		ComponentID: componentRef,
+	}); err != nil {
 		log.Fatal(err)
 	}
 }

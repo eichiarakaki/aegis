@@ -10,7 +10,7 @@
 
 ## Responses
 
-**Response structure from the Aegis Daemon to the Aegis CLI:**
+**Response structure from the Aegis Daemon to the Aegis CTL:**
 
 SESSION_CREATE when OK
 ```json
@@ -228,7 +228,7 @@ SESSION_STATE when ERROR
 }
 ```
 
-### Component inspection commands (TO-DO)
+### Component inspection commands
 COMPONENT_LIST when OK
 ```json
 {

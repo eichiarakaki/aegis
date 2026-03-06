@@ -4,43 +4,26 @@ import (
 	"github.com/eichiarakaki/aegis/internals/core"
 )
 
-func ListSessions(sessionStore *core.SessionStore) map[string]any {
+func ListSessions(sessionStore *core.SessionStore) core.SessionListData {
 	sessions := sessionStore.ListSessions()
 
-	result := make(map[string]any)
-	for _, session := range sessions {
-
-		// Read components from the session's registry
-		var componentList []map[string]any
-		if session.Registry != nil {
-			for _, comp := range session.Registry.List() {
-				componentList = append(componentList, map[string]any{
-					"id":             comp.ID,
-					"name":           comp.Name,
-					"version":        comp.Version,
-					"state":          comp.State,
-					"started_at":     comp.StartedAt,
-					"last_heartbeat": comp.LastHeartbeat,
-				})
-			}
+	entries := make([]core.SessionListEntry, 0, len(sessions))
+	for _, s := range sessions {
+		count := 0
+		if s.Registry != nil {
+			count = len(s.Registry.List())
 		}
-
-		if componentList == nil {
-			componentList = []map[string]any{} // avoid null in JSON
-		}
-
-		result[session.ID] = map[string]any{
-			"id":            session.ID,
-			"name":          session.Name,
-			"stream_socket": session.GetStreamSocketPath(),
-			"topics":        session.Topics,
-			"mode":          session.Mode,
-			"state":         string(session.GetState()),
-			"components":    componentList,
-			"created_at":    session.CreatedAt,
-			"started_at":    session.StartedAt,
-			"stopped_at":    session.StoppedAt,
-		}
+		entries = append(entries, core.SessionListEntry{
+			ID:             s.ID,
+			Name:           s.Name,
+			Mode:           s.Mode,
+			State:          string(s.GetState()),
+			CreatedAt:      s.CreatedAt,
+			StartedAt:      s.StartedAt,
+			StoppedAt:      s.StoppedAt,
+			ComponentCount: count,
+		})
 	}
-	return result
+
+	return core.SessionListData{Sessions: entries}
 }

@@ -38,6 +38,7 @@ func stateTag(s string) string {
 	}
 }
 
+// prettyPrint is the single entry point called by sendCommand.
 func prettyPrint(resp map[string]any) {
 	status, _ := resp["status"].(string)
 	cmdRaw, _ := resp["command"].(string)
@@ -77,10 +78,16 @@ func prettyPrint(resp map[string]any) {
 		renderSessionDelete(data, message)
 	case core.CommandComponentList:
 		renderComponentList(data)
-	case core.CommandComponentGet, core.CommandComponentDescribe:
-		renderComponentDetail(data)
-	case core.CommandHealthCheck, core.CommandHealthCheckSession, core.CommandHealthCheckComp:
-		renderHealth(data, message)
+	case core.CommandComponentGet:
+		renderComponentGet(data)
+	case core.CommandComponentDescribe:
+		renderComponentDescribe(data)
+	case core.CommandHealthCheck:
+		renderHealthGlobal(data)
+	case core.CommandHealthCheckSession:
+		renderHealthSession(data)
+	case core.CommandHealthCheckComp:
+		renderHealthComponent(data)
 	default:
 		renderFallback(cmdRaw, message, data)
 	}
@@ -88,7 +95,7 @@ func prettyPrint(resp map[string]any) {
 	fmt.Println()
 }
 
-// ── Renderers ─────────────────────────────────────────────────────────────────
+// ── Session renderers ─────────────────────────────────────────────────────────
 
 func renderSessionCreate(data map[string]any) {
 	sess, _ := data["session"].(map[string]any)
@@ -106,13 +113,22 @@ func renderSessionAttach(data map[string]any) {
 	fmt.Printf("%s %d component(s) attached to session %s\n",
 		green("[OK]"), len(paths), str(data["session_id"]))
 	for _, p := range paths {
-		fmt.Printf("  + %s\n", str(p))
+		switch v := p.(type) {
+		case map[string]any:
+			fmt.Printf("  + %s  %s\n", str(v["name"]), stateTag(str(v["state"])))
+		default:
+			fmt.Printf("  + %s\n", str(p))
+		}
 	}
 }
 
 func renderSessionStart(data map[string]any) {
-	fmt.Printf("%s session %s is now %s\n",
-		green("[OK]"), str(data["session_id"]), bold(str(data["current_state"])))
+	fmt.Printf("%s session %s  %s → %s\n",
+		green("[OK]"),
+		str(data["session_id"]),
+		stateTag(str(data["previous_state"])),
+		stateTag(str(data["current_state"])),
+	)
 	fmt.Printf("  started : %s\n", fmtTime(str(data["started_at"])))
 
 	comps, _ := data["components"].([]any)
@@ -125,47 +141,48 @@ func renderSessionStart(data map[string]any) {
 		if !ok {
 			continue
 		}
-		name := str(firstOf(cm, "Name", "name"))
-		id := str(firstOf(cm, "ID", "id"))
-		state := str(firstOf(cm, "State", "state"))
-		ver := str(firstOf(cm, "Version", "version"))
-		fmt.Printf("    %s %s %s v%s\n", stateTag(state), bold(name), dim(id), ver)
-
-		if caps, ok := cm["Capabilities"].(map[string]any); ok {
-			if streams, ok := caps["requires_streams"].([]any); ok {
-				fmt.Printf("      streams    : %s\n", joinAny(streams))
-			}
-			if symbols, ok := caps["supported_symbols"].([]any); ok {
-				fmt.Printf("      symbols    : %s\n", joinAny(symbols))
-			}
-			if tframes, ok := caps["supported_timeframes"].([]any); ok {
-				fmt.Printf("      timeframes : %s\n", joinAny(tframes))
-			}
-		}
+		fmt.Printf("    %s %s\n",
+			stateTag(str(firstOf(cm, "state", "State"))),
+			str(firstOf(cm, "name", "Name")),
+		)
 	}
 }
 
 func renderSessionStop(data map[string]any) {
-	fmt.Printf("%s session %s is now %s\n",
-		green("[OK]"), str(data["session_id"]), bold(str(data["current_state"])))
+	fmt.Printf("%s session %s  %s → %s\n",
+		green("[OK]"),
+		str(data["session_id"]),
+		stateTag(str(data["previous_state"])),
+		stateTag(str(data["current_state"])),
+	)
 	if s := str(data["stopped_at"]); s != "" {
 		fmt.Printf("  stopped : %s\n", fmtTime(s))
+	}
+	comps, _ := data["components"].([]any)
+	for _, c := range comps {
+		cm, ok := c.(map[string]any)
+		if !ok {
+			continue
+		}
+		fmt.Printf("    %s %s\n",
+			stateTag(str(firstOf(cm, "state", "State"))),
+			str(firstOf(cm, "name", "Name")),
+		)
 	}
 }
 
 func renderSessionList(data map[string]any) {
-	if len(data) == 0 {
+	sessions, _ := data["sessions"].([]any)
+	if len(sessions) == 0 {
 		fmt.Println("no sessions found")
 		return
 	}
-	fmt.Printf("%d session(s):\n", len(data))
-	for _, v := range data {
+	fmt.Printf("%d session(s):\n", len(sessions))
+	for _, v := range sessions {
 		sess, ok := v.(map[string]any)
 		if !ok {
 			continue
 		}
-
-		// Each session gets a blank line separator + bold header line
 		fmt.Println()
 		fmt.Printf("  %s %s %s  mode=%s\n",
 			stateTag(str(sess["state"])),
@@ -173,87 +190,232 @@ func renderSessionList(data map[string]any) {
 			dim("("+str(sess["id"])+")"),
 			str(sess["mode"]),
 		)
-
 		if s := str(sess["started_at"]); s != "" {
-			fmt.Printf("  %-10s %s\n", dim("started"), fmtTime(s))
+			fmt.Printf("  %-12s %s\n", dim("started"), fmtTime(s))
 		}
-
-		// Topics: one per line, indented, so wrapping never corrupts structure
-		if topics, ok := sess["topics"].([]any); ok && len(topics) > 0 {
-			fmt.Printf("  %-10s (%d)\n", dim("topics"), len(topics))
-			for _, t := range topics {
-				fmt.Printf("    %s\n", dim(str(t)))
-			}
-		}
-
-		if comps, ok := sess["components"].([]any); ok && len(comps) > 0 {
-			fmt.Printf("  %-10s (%d)\n", dim("components"), len(comps))
-			for _, c := range comps {
-				cm, ok := c.(map[string]any)
-				if !ok {
-					continue
-				}
-				fmt.Printf("    %s %s %s\n",
-					stateTag(str(firstOf(cm, "State", "state"))),
-					bold(str(firstOf(cm, "Name", "name"))),
-					dim("("+str(firstOf(cm, "ID", "id"))+")"),
-				)
-			}
+		if n, ok := sess["component_count"]; ok {
+			fmt.Printf("  %-12s %v\n", dim("components"), n)
 		}
 	}
 }
 
 func renderSessionState(data map[string]any) {
-	fmt.Printf("%s session %s  state=%s\n",
-		green("[OK]"), str(data["session_id"]), bold(str(data["state"])))
+	sess, _ := data["session"].(map[string]any)
+	comps, _ := data["components"].([]any)
+	if sess == nil {
+		return
+	}
+	fmt.Printf("%s session %q\n", green("[OK]"), str(sess["name"]))
+	fmt.Printf("  id      : %s\n", str(sess["id"]))
+	fmt.Printf("  mode    : %s\n", str(sess["mode"]))
+	fmt.Printf("  state   : %s\n", stateTag(str(sess["state"])))
+	if up := sess["uptime_seconds"]; up != nil {
+		fmt.Printf("  uptime  : %s\n", fmtUptime(up))
+	}
+	if s := str(sess["started_at"]); s != "" {
+		fmt.Printf("  started : %s\n", fmtTime(s))
+	}
+	if s := str(sess["stopped_at"]); s != "" {
+		fmt.Printf("  stopped : %s\n", fmtTime(s))
+	}
+	if len(comps) == 0 {
+		return
+	}
+	fmt.Printf("  components (%d):\n", len(comps))
+	for _, c := range comps {
+		cm, ok := c.(map[string]any)
+		if !ok {
+			continue
+		}
+		fmt.Printf("    %s %s\n",
+			stateTag(str(firstOf(cm, "state", "State"))),
+			str(firstOf(cm, "name", "Name")),
+		)
+	}
 }
 
 func renderSessionDelete(data map[string]any, msg string) {
-	fmt.Printf("%s session deleted\n", green("[OK]"))
-	if msg != "" {
-		fmt.Printf("  %s\n", msg)
+	name := str(data["session_name"])
+	id := str(data["session_id"])
+	if name != "" {
+		fmt.Printf("%s session %q (%s) deleted\n", green("[OK]"), name, id)
+	} else {
+		fmt.Printf("%s session deleted\n", green("[OK]"))
+		if msg != "" {
+			fmt.Printf("  %s\n", dim(msg))
+		}
 	}
 }
 
+// ── Component renderers ───────────────────────────────────────────────────────
+
 func renderComponentList(data map[string]any) {
 	list, _ := data["components"].([]any)
+	sid := str(data["session_id"])
 	if len(list) == 0 {
-		fmt.Println("no components found")
+		fmt.Printf("%s session %s  no components\n", green("[OK]"), sid)
 		return
 	}
-	fmt.Printf("%d component(s):\n", len(list))
+	fmt.Printf("%s session %s  %d component(s):\n", green("[OK]"), sid, len(list))
 	for _, c := range list {
 		cm, ok := c.(map[string]any)
 		if !ok {
 			continue
 		}
-		fmt.Printf("  %s %s %s v%s\n",
-			stateTag(str(firstOf(cm, "State", "state"))),
-			bold(str(firstOf(cm, "Name", "name"))),
-			dim("("+str(firstOf(cm, "ID", "id"))+")"),
-			str(firstOf(cm, "Version", "version")),
+		fmt.Printf("  %s %s %s\n",
+			stateTag(str(cm["state"])),
+			bold(str(cm["name"])),
+			dim(str(cm["id"])),
+		)
+		if syms, ok := cm["supported_symbols"].([]any); ok && len(syms) > 0 {
+			fmt.Printf("    symbols    : %s\n", joinAny(syms))
+		}
+		if tfs, ok := cm["supported_timeframes"].([]any); ok && len(tfs) > 0 {
+			fmt.Printf("    timeframes : %s\n", joinAny(tfs))
+		}
+		if req, ok := cm["requires"].(map[string]any); ok && len(req) > 0 {
+			fmt.Printf("    requires   : %s\n", joinBoolMap(req))
+		}
+	}
+}
+
+func renderComponentGet(data map[string]any) {
+	c, _ := data["component"].(map[string]any)
+	if c == nil {
+		return
+	}
+	fmt.Printf("%s component %q\n", green("[OK]"), str(c["name"]))
+	fmt.Printf("  id      : %s\n", str(c["id"]))
+	fmt.Printf("  session : %s\n", str(data["session_id"]))
+	fmt.Printf("  state   : %s\n", stateTag(str(c["state"])))
+	if up := c["uptime_seconds"]; up != nil {
+		fmt.Printf("  uptime  : %s\n", fmtUptime(up))
+	}
+	if s := str(c["started_at"]); s != "" {
+		fmt.Printf("  started : %s\n", fmtTime(s))
+	}
+	if syms, ok := c["supported_symbols"].([]any); ok && len(syms) > 0 {
+		fmt.Printf("  symbols    : %s\n", joinAny(syms))
+	}
+	if tfs, ok := c["supported_timeframes"].([]any); ok && len(tfs) > 0 {
+		fmt.Printf("  timeframes : %s\n", joinAny(tfs))
+	}
+	if req, ok := c["requires"].(map[string]any); ok && len(req) > 0 {
+		fmt.Printf("  requires   : %s\n", joinBoolMap(req))
+	}
+}
+
+func renderComponentDescribe(data map[string]any) {
+	c, _ := data["component"].(map[string]any)
+	if c == nil {
+		return
+	}
+	fmt.Printf("%s describe %q  session %s\n",
+		green("[OK]"), str(c["name"]), str(data["session_id"]))
+	fmt.Printf("  id      : %s\n", str(c["id"]))
+	fmt.Printf("  state   : %s\n", stateTag(str(c["state"])))
+	if req, ok := c["requires"].(map[string]any); ok && len(req) > 0 {
+		fmt.Printf("  requires   : %s\n", joinBoolMap(req))
+	}
+	if topics, ok := c["topics_subscribed"].([]any); ok && len(topics) > 0 {
+		fmt.Printf("  subscribed (%d):\n", len(topics))
+		for _, t := range topics {
+			fmt.Printf("    %s\n", dim(str(t)))
+		}
+	}
+	if socket := str(c["socket"]); socket != "" {
+		fmt.Printf("  socket  : %s\n", dim(socket))
+	}
+	if metrics, ok := c["metrics"].(map[string]any); ok && len(metrics) > 0 {
+		fmt.Printf("  metrics :\n")
+		if hb := str(metrics["last_heartbeat"]); hb != "" {
+			fmt.Printf("    last_heartbeat : %s\n", fmtTime(hb))
+		}
+		if in := metrics["messages_in"]; in != nil {
+			fmt.Printf("    messages_in    : %v\n", in)
+		}
+		if out := metrics["messages_out"]; out != nil {
+			fmt.Printf("    messages_out   : %v\n", out)
+		}
+	}
+}
+
+// ── Health renderers ──────────────────────────────────────────────────────────
+
+func renderHealthGlobal(data map[string]any) {
+	fmt.Printf("%s health\n", green("[OK]"))
+	if data == nil || len(data) == 0 {
+		return
+	}
+	if sessions, ok := data["sessions"].(map[string]any); ok {
+		total, _ := sessions["total"].(float64)
+		running, _ := sessions["running"].(float64)
+		fmt.Printf("  sessions   : %d total, %d running\n", int(total), int(running))
+	}
+	if components, ok := data["components"].(map[string]any); ok {
+		total, _ := components["total"].(float64)
+		running, _ := components["running"].(float64)
+		fmt.Printf("  components : %d total, %d running\n", int(total), int(running))
+	}
+	if uptime := data["uptime_seconds"]; uptime != nil {
+		fmt.Printf("  daemon     : up %s\n", fmtUptime(uptime))
+	}
+}
+
+func renderHealthSession(data map[string]any) {
+	sess, _ := data["session"].(map[string]any)
+	if sess == nil {
+		fmt.Printf("%s health session\n", green("[OK]"))
+		return
+	}
+	fmt.Printf("%s session %q  %s\n",
+		green("[OK]"), str(sess["name"]), stateTag(str(sess["state"])))
+	if up := sess["uptime_seconds"]; up != nil {
+		fmt.Printf("  uptime     : %s\n", fmtUptime(up))
+	}
+	comps, _ := data["components"].([]any)
+	if len(comps) == 0 {
+		return
+	}
+	fmt.Printf("  components (%d):\n", len(comps))
+	for _, c := range comps {
+		cm, ok := c.(map[string]any)
+		if !ok {
+			continue
+		}
+		fmt.Printf("    %s %s\n",
+			stateTag(str(firstOf(cm, "state", "State"))),
+			str(firstOf(cm, "name", "Name")),
 		)
 	}
 }
 
-func renderComponentDetail(data map[string]any) {
-	printKVMap(data, "  ")
+func renderHealthComponent(data map[string]any) {
+	c, _ := data["component"].(map[string]any)
+	if c == nil {
+		fmt.Printf("%s health component\n", green("[OK]"))
+		return
+	}
+	fmt.Printf("%s %s  %s\n",
+		green("[OK]"), str(c["name"]), stateTag(str(c["state"])))
+	if hb := str(c["last_heartbeat"]); hb != "" {
+		fmt.Printf("  last heartbeat : %s\n", fmtTime(hb))
+	}
+	if up := c["uptime_seconds"]; up != nil {
+		fmt.Printf("  uptime         : %s\n", fmtUptime(up))
+	}
 }
 
-func renderHealth(data map[string]any, msg string) {
-	fmt.Printf("%s health check\n", green("[OK]"))
-	if msg != "" {
-		fmt.Printf("  %s\n", msg)
-	}
-	printKVMap(data, "  ")
-}
+// ── Fallback ──────────────────────────────────────────────────────────────────
 
 func renderFallback(cmd, msg string, data map[string]any) {
-	fmt.Printf("%s %s\n", green("[OK]"), cmd)
+	fmt.Printf("%s %s\n", green("[OK]"), strings.ToLower(strings.ReplaceAll(cmd, "_", " ")))
 	if msg != "" {
-		fmt.Printf("  %s\n", msg)
+		fmt.Printf("  %s\n", dim(msg))
 	}
-	printKVMap(data, "  ")
+	if len(data) > 0 {
+		printKVMap(data, "  ")
+	}
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -262,10 +424,13 @@ func printKVMap(m map[string]any, indent string) {
 	for k, v := range m {
 		switch vv := v.(type) {
 		case map[string]any:
-			fmt.Printf("%s%s:\n", indent, k)
+			fmt.Printf("%s%s:\n", indent, dim(k))
 			printKVMap(vv, indent+"  ")
 		case []any:
-			fmt.Printf("%s%s: (%d)\n", indent, k, len(vv))
+			if len(vv) == 0 {
+				continue // skip empty arrays
+			}
+			fmt.Printf("%s%s: (%d)\n", indent, dim(k), len(vv))
 			for _, item := range vv {
 				if mm, ok := item.(map[string]any); ok {
 					printKVMap(mm, indent+"  ")
@@ -274,7 +439,10 @@ func printKVMap(m map[string]any, indent string) {
 				}
 			}
 		default:
-			fmt.Printf("%s%s: %v\n", indent, k, v)
+			if v == nil {
+				continue // skip null values
+			}
+			fmt.Printf("%s%-18s %v\n", indent, dim(k), v)
 		}
 	}
 }
@@ -287,6 +455,19 @@ func joinAny(items []any) string {
 	return strings.Join(parts, ", ")
 }
 
+// joinBoolMap renders {"klines": true, "trades": false} as "klines, ~trades"
+func joinBoolMap(m map[string]any) string {
+	parts := make([]string, 0, len(m))
+	for k, v := range m {
+		if b, ok := v.(bool); ok && !b {
+			parts = append(parts, dim("~"+k))
+		} else {
+			parts = append(parts, k)
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
 var timeFormats = []string{
 	time.RFC3339Nano,
 	time.RFC3339,
@@ -295,12 +476,40 @@ var timeFormats = []string{
 }
 
 func fmtTime(raw string) string {
+	if raw == "" {
+		return ""
+	}
 	for _, f := range timeFormats {
 		if t, err := time.Parse(f, raw); err == nil {
 			return t.Local().Format("2006-01-02 15:04:05")
 		}
 	}
 	return raw
+}
+
+func fmtUptime(v any) string {
+	var secs float64
+	switch n := v.(type) {
+	case float64:
+		secs = n
+	case int64:
+		secs = float64(n)
+	case json.Number:
+		secs, _ = n.Float64()
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+	d := time.Duration(secs) * time.Second
+	h := int(d.Hours())
+	m := int(d.Minutes()) % 60
+	s := int(d.Seconds()) % 60
+	if h > 0 {
+		return fmt.Sprintf("%dh %dm %ds", h, m, s)
+	}
+	if m > 0 {
+		return fmt.Sprintf("%dm %ds", m, s)
+	}
+	return fmt.Sprintf("%ds", s)
 }
 
 func str(v any) string {
@@ -314,9 +523,10 @@ func str(v any) string {
 	return string(b)
 }
 
+// firstOf returns the first non-nil value found for any of the given keys.
 func firstOf(m map[string]any, keys ...string) any {
 	for _, k := range keys {
-		if v, ok := m[k]; ok {
+		if v, ok := m[k]; ok && v != nil {
 			return v
 		}
 	}

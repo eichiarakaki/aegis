@@ -4,25 +4,26 @@ import (
 	"github.com/eichiarakaki/aegis/internals/core"
 )
 
-func GetSessionState(cmd core.Command, session *core.Session) (core.Response, error) {
-
-	var components []*core.Component
-
+func GetSessionState(session *core.Session) core.SessionStateData {
+	refs := make([]core.ComponentRef, 0)
 	for _, c := range session.Registry.List() {
-		components = append(components, c)
+		refs = append(refs, core.ComponentRef{
+			Name:  c.Name,
+			State: string(c.State),
+		})
 	}
 
-	sessionState := core.Response{
-		RequestID: cmd.RequestID,
-		Command:   core.CommandSessionState,
-		Status:    core.OK,
-		// ErrorCode: "",
-		// Message:   "",
-		Data: map[string]any{
-			"session":    session,
-			"components": components,
+	return core.SessionStateData{
+		Session: core.SessionDetail{
+			ID:            session.ID,
+			Name:          session.Name,
+			Mode:          session.Mode,
+			State:         string(session.GetState()),
+			UptimeSeconds: session.GetUptimeSeconds(),
+			CreatedAt:     session.CreatedAt,
+			StartedAt:     session.StartedAt,
+			StoppedAt:     session.StoppedAt,
 		},
+		Components: refs,
 	}
-
-	return sessionState, nil
 }

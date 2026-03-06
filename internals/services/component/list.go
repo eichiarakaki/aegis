@@ -2,13 +2,19 @@ package component
 
 import "github.com/eichiarakaki/aegis/internals/core"
 
-// List will display all the properties correctly only if it's connected to the aegis-component.sock
-func List(session *core.Session) (map[string]any, error) {
-
-	data := map[string]any{
-		"session_id": session.ID,
-		"components": session.Registry.List(),
+// List returns a summary of all components registered in the session.
+func List(session *core.Session) core.ComponentListData {
+	comps := session.Registry.List()
+	list := make([]core.ComponentSummary, 0, len(comps))
+	for _, c := range comps {
+		list = append(list, core.ComponentSummary{
+			ID:                  c.ID,
+			Name:                c.Name,
+			State:               string(c.State),
+			Requires:            requiresMap(c.Capabilities.RequiresStreams),
+			SupportedSymbols:    c.Capabilities.SupportedSymbols,
+			SupportedTimeframes: c.Capabilities.SupportedTimeframes,
+		})
 	}
-
-	return data, nil
+	return core.ComponentListData{SessionID: session.ID, Components: list}
 }
