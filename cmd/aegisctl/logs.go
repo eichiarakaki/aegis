@@ -45,8 +45,8 @@ func resolveComponentID(sessionID, ref string) (id, name string, err error) {
 
 	var list struct {
 		Components []struct {
-			ID   string `json:"ID"`
-			Name string `json:"Name"`
+			ID   string `json:"id"`
+			Name string `json:"name"`
 		} `json:"components"`
 	}
 	if err := json.Unmarshal(dataBytes, &list); err != nil {
