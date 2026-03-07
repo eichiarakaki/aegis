@@ -195,6 +195,7 @@ type HealthComponentData struct {
 
 // ComponentRef is the minimal representation used inside session responses.
 type ComponentRef struct {
+	ID    string `json:"id"`
 	Name  string `json:"name"`
 	State string `json:"state"`
 }

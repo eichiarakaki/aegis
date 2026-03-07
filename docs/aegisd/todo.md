@@ -15,6 +15,6 @@
 - [x] Implement 'aegisctl session restart [session]'
 - [x] Implement 'aegisctl session resume [session]' from a stopped session
 
-- [ ] Improve the aegisctl's formatter for better context when attaching components
+- [x] Improve the aegisctl's formatter for better context when attaching components
 
 - [ ] Adapt the SDKs for restarting (cleaning all previous data)
