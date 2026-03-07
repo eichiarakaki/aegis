@@ -18,6 +18,11 @@ type Config struct {
 	DataRoot  string   // AEGIS_DATA_ROOT
 	NC        *nats.Conn
 	DS        *DataStreamServer // if non-nil, Publish delivers with backpressure (historical mode)
+
+	// Optional time range for historical filtering (unix milliseconds, inclusive).
+	// Zero means no bound.
+	FromTS int64
+	ToTS   int64
 }
 
 // Orchestrator fans out one SymbolMerger per unique symbol found in Topics,
@@ -28,7 +33,6 @@ type Orchestrator struct {
 	wg     sync.WaitGroup
 
 	// OnFinished is called when all data sources are exhausted.
-	// Wire this to session.SetToFinished() at the call site.
 	OnFinished func()
 
 	// OnError is called if the clock or a merger returns a fatal error.
@@ -39,12 +43,11 @@ type Orchestrator struct {
 // and before Start.
 func New(cfg Config) (*Orchestrator, error) {
 	if cfg.DataRoot == "" {
-
-		DataRoot, err := dataRootFromEnv()
+		dataRoot, err := dataRootFromEnv()
 		if err != nil {
 			return nil, err
 		}
-		cfg.DataRoot = DataRoot
+		cfg.DataRoot = dataRoot
 	}
 	return &Orchestrator{cfg: cfg}, nil
 }
@@ -52,10 +55,9 @@ func New(cfg Config) (*Orchestrator, error) {
 // Start builds the source graph, wires the GlobalClock, and launches all
 // goroutines. It returns immediately after the goroutines are running.
 func (o *Orchestrator) Start(ctx context.Context) error {
-	resolver := NewFileResolver(o.cfg.DataRoot)
+	resolver := NewFileResolverWithRange(o.cfg.DataRoot, o.cfg.FromTS, o.cfg.ToTS)
 	pub := NewPublisher(o.cfg.NC, o.cfg.DS)
 
-	// Group topics by symbol.
 	symbolSources, err := o.buildSources(resolver)
 	if err != nil {
 		return fmt.Errorf("orchestrator: build sources: %w", err)
@@ -65,7 +67,6 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 		return fmt.Errorf("orchestrator: no valid data sources found for session %s", o.cfg.SessionID)
 	}
 
-	// Collect symbols in a deterministic order.
 	symbols := make([]string, 0, len(symbolSources))
 	for sym := range symbolSources {
 		symbols = append(symbols, sym)
@@ -81,7 +82,6 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 	runCtx, cancel := context.WithCancel(ctx)
 	o.cancel = cancel
 
-	// Launch SymbolMergers.
 	for _, m := range mergers {
 		m := m
 		o.wg.Add(1)
@@ -91,12 +91,11 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 		}()
 	}
 
-	// Launch GlobalClock — drives everything.
 	o.wg.Add(1)
 	go func() {
 		defer o.wg.Done()
 		err := gc.Run(runCtx)
-		cancel() // stop all mergers regardless of why the clock stopped
+		cancel()
 
 		if err != nil && err != context.Canceled {
 			if o.OnError != nil {
@@ -105,7 +104,6 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 			return
 		}
 
-		// Normal exit: all data exhausted.
 		if o.OnFinished != nil {
 			o.OnFinished()
 		}
@@ -139,14 +137,12 @@ func (o *Orchestrator) buildSources(resolver *FileResolver) (map[string][]DataSo
 
 		files, err := resolver.Resolve(tp)
 		if err != nil {
-			// Non-fatal: warn and skip this topic.
-			// In production, wire this to the session logger.
 			_ = fmt.Sprintf("orchestrator: topic %q: %v (skipped)", rawTopic, err)
 			continue
 		}
 
 		natsTopic := NATSTopic(o.cfg.SessionID, tp)
-		src := NewCSVDataSource(natsTopic, tp.DataType, priority, parseFn, files)
+		src := NewCSVDataSourceWithRange(natsTopic, tp.DataType, priority, parseFn, files, o.cfg.FromTS, o.cfg.ToTS)
 
 		symbolSources[tp.Symbol] = append(symbolSources[tp.Symbol], src)
 	}
@@ -155,18 +151,14 @@ func (o *Orchestrator) buildSources(resolver *FileResolver) (map[string][]DataSo
 }
 
 // dataRootFromEnv reads AEGIS_DATA_ROOT from the environment,
-// falling back to ~/media/external_hdd/data.
+// falling back to the value in aegis.yaml.
 func dataRootFromEnv() (string, error) {
 	if v := os.Getenv("AEGIS_DATA_ROOT"); v != "" {
 		return v, nil
 	}
-	// Load from aegis.yaml
 	cfg, err := config.LoadAegis()
-	// logger.Debug("DATA:", cfg.DataPath)
-
 	if err != nil {
 		return "", err
 	}
-
 	return cfg.DataPath, nil
 }

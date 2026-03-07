@@ -70,6 +70,7 @@ func AttachComponents(session *core.Session, paths []string) ([]core.ComponentRe
 		session.AddComponentIDForPath(path, componentID)
 
 		refs = append(refs, core.ComponentRef{
+			ID:    componentID,
 			Name:  name,
 			State: string(core.ComponentStateInit),
 		})

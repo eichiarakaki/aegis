@@ -17,6 +17,9 @@ type CSVDataSource struct {
 	parse    ParseFunc
 	files    []string // sorted chronological file paths
 
+	fromTS int64 // unix ms, 0 = no lower bound
+	toTS   int64 // unix ms, 0 = no upper bound
+
 	fileIdx int      // index into files — next file to load
 	rows    []RawRow // current file's parsed rows, fully in memory
 	cursor  int      // next row to serve from rows
@@ -31,6 +34,20 @@ func NewCSVDataSource(topic, dataType string, priority int, parse ParseFunc, fil
 		priority: priority,
 		parse:    parse,
 		files:    files,
+	}
+}
+
+// NewCSVDataSourceWithRange creates a CSVDataSource that filters rows to
+// only emit those within [fromTS, toTS] (unix ms, inclusive). Zero means no bound.
+func NewCSVDataSourceWithRange(topic, dataType string, priority int, parse ParseFunc, files []string, fromTS, toTS int64) *CSVDataSource {
+	return &CSVDataSource{
+		topic:    topic,
+		dataType: dataType,
+		priority: priority,
+		parse:    parse,
+		files:    files,
+		fromTS:   fromTS,
+		toTS:     toTS,
 	}
 }
 
@@ -77,7 +94,6 @@ func (s *CSVDataSource) ensureLoaded() error {
 			return ErrExhausted
 		}
 		if err := s.loadFile(s.files[s.fileIdx]); err != nil {
-			// Log and skip unreadable files rather than aborting the whole source.
 			s.fileIdx++
 			return fmt.Errorf("csv_source: skip file %q: %w", s.files[s.fileIdx-1], err)
 		}
@@ -86,7 +102,7 @@ func (s *CSVDataSource) ensureLoaded() error {
 	return nil
 }
 
-// loadFile reads an entire CSV file into s.rows.
+// loadFile reads an entire CSV file into s.rows, applying from/to filtering.
 func (s *CSVDataSource) loadFile(path string) error {
 	f, err := os.Open(path)
 	if err != nil {
@@ -103,7 +119,7 @@ func (s *CSVDataSource) loadFile(path string) error {
 	}
 
 	var rows []RawRow
-	lineNum := 1 // 1-based, header was line 1
+	lineNum := 1
 	for {
 		lineNum++
 		record, err := r.Read()
@@ -111,15 +127,23 @@ func (s *CSVDataSource) loadFile(path string) error {
 			break
 		}
 		if err != nil {
-			// Skip malformed lines, don't abort the file.
 			continue
 		}
 
 		ts, payload, err := s.parse(record)
 		if err != nil {
-			// Log skip — in production wire this to the session logger.
 			_ = fmt.Sprintf("csv_source: %s line %d: %v (skipped)", path, lineNum, err)
 			continue
+		}
+
+		// Apply from/to filter.
+		if s.fromTS != 0 && ts < s.fromTS {
+			continue
+		}
+		if s.toTS != 0 && ts > s.toTS {
+			// Files are sorted chronologically and rows within a file are
+			// also ordered — once we exceed toTS we can stop reading.
+			break
 		}
 
 		rows = append(rows, RawRow{
@@ -132,7 +156,7 @@ func (s *CSVDataSource) loadFile(path string) error {
 	}
 
 	if len(rows) == 0 {
-		return fmt.Errorf("no valid rows in %q", path)
+		return fmt.Errorf("no valid rows in %q (after range filter)", path)
 	}
 
 	s.rows = rows

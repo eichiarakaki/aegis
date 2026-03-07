@@ -26,9 +26,9 @@ func LogPath(sessionID, componentID string) string {
 	return filepath.Join(logDir(sessionID), componentID+".log")
 }
 
-// LaunchComponents launches all binaries in session.ComponentEntries, passing
-// each process its pre-assigned AEGIS_COMPONENT_ID so HandleComponentConnection
-// can hydrate the existing placeholder instead of creating a duplicate entry.
+// LaunchComponents launches all binaries in session.ComponentEntries.
+// If a component already has a live entry in the registry (e.g. after a restart),
+// its binary is not relaunched — the existing process is expected to still be running.
 func LaunchComponents(session *core.Session) error {
 	entries := session.GetComponentEntries()
 	if len(entries) == 0 {
@@ -47,12 +47,29 @@ func LaunchComponents(session *core.Session) error {
 	}
 
 	launched := 0
+	skipped := 0
 	for _, entry := range entries {
 		componentID := entry.ComponentID
 		if componentID == "" {
-			// Fallback for entries added via the old AddComponentPath path.
 			componentID = utils.GenerateComponentID()
 			logger.Warnf("launch: no pre-assigned ID for %s — generated %s", entry.Path, componentID)
+		}
+
+		// Skip relaunching only if the process has already connected and completed
+		// at least part of the handshake. INIT and REGISTERED are placeholder states
+		// that exist before the process connects — they must be launched.
+		if comp, exists := session.Registry.Get(componentID); exists {
+			switch comp.State {
+			case core.ComponentStateInitializing,
+				core.ComponentStateReady,
+				core.ComponentStateConfigured,
+				core.ComponentStateRunning,
+				core.ComponentStateWaiting:
+				logger.Infof("launch: component %s (%s) already live (state=%s) — skipping relaunch",
+					comp.Name, componentID, comp.State)
+				skipped++
+				continue
+			}
 		}
 
 		cmd := exec.Command(entry.Path)
@@ -89,7 +106,7 @@ func LaunchComponents(session *core.Session) error {
 		launched++
 	}
 
-	if launched == 0 {
+	if launched == 0 && skipped == 0 {
 		return fmt.Errorf("launch: all %d component(s) failed to start", len(entries))
 	}
 	return nil

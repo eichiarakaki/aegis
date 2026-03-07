@@ -110,15 +110,18 @@ func renderSessionCreate(data map[string]any) {
 
 func renderSessionAttach(data map[string]any) {
 	paths, _ := data["attached_components"].([]any)
-	fmt.Printf("%s %d component(s) attached to session %s\n",
-		green("[OK]"), len(paths), str(data["session_id"]))
+	sid := str(data["session_id"])
+	fmt.Printf("%s %d component(s) attached to session %s", green("[OK]"), len(paths), dim(sid))
 	for _, p := range paths {
-		switch v := p.(type) {
-		case map[string]any:
-			fmt.Printf("  + %s  %s\n", str(v["name"]), stateTag(str(v["state"])))
-		default:
+		v, ok := p.(map[string]any)
+		if !ok {
 			fmt.Printf("  + %s\n", str(p))
+			continue
 		}
+		fmt.Println()
+		fmt.Printf(" + %s\n", bold(str(v["name"])))
+		fmt.Printf("   id    : %s\n", str(v["id"]))
+		fmt.Printf("   state : %s\n", stateTag(str(v["state"])))
 	}
 }
 

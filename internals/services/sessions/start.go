@@ -11,14 +11,28 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
+// TimeRange optionally restricts historical playback to [From, To] (unix ms).
+// Zero values mean no bound.
+type TimeRange struct {
+	From int64
+	To   int64
+}
+
 // StartSession starts the session: launches attached component binaries,
 // waits for them to complete the handshake, then starts the orchestrator.
-func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *nats.Conn) error {
+// On any failure after SetToStarting, the session is rolled back to INITIALIZED
+// so the caller can retry without creating a new session.
+func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *nats.Conn, tr TimeRange) error {
 	if err := session.SetToStarting(); err != nil {
 		return err
 	}
 
-	// Launch all binaries — stdout/stderr go to rotating log files.
+	// rollback resets the session to INITIALIZED so start can be retried.
+	rollback := func(cause error) error {
+		session.ForceState(core.SessionInitialized)
+		return cause
+	}
+
 	if err := LaunchComponents(session); err != nil {
 		logger.Warnf("Session %s: component launch warning: %s", session.ID, err.Error())
 	}
@@ -42,7 +56,7 @@ func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *na
 
 	ds := orchestrator.NewDataStreamServer(session, nc)
 	if err := ds.Start(context.Background()); err != nil {
-		return fmt.Errorf("session %s: data stream server: %w", session.ID, err)
+		return rollback(fmt.Errorf("session %s: data stream server: %w", session.ID, err))
 	}
 
 	o, err := orchestrator.New(orchestrator.Config{
@@ -50,10 +64,12 @@ func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *na
 		Topics:    *session.Topics,
 		NC:        nc,
 		DS:        ds,
+		FromTS:    tr.From,
+		ToTS:      tr.To,
 	})
 	if err != nil {
 		ds.Stop()
-		return fmt.Errorf("session %s: orchestrator: %w", session.ID, err)
+		return rollback(fmt.Errorf("session %s: orchestrator: %w", session.ID, err))
 	}
 
 	o.OnFinished = func() {
@@ -82,7 +98,7 @@ func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *na
 
 	if err := o.Start(context.Background()); err != nil {
 		ds.Stop()
-		return err
+		return rollback(err)
 	}
 
 	return session.SetToRunning()
