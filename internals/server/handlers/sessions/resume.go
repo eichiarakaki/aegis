@@ -13,14 +13,17 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
-// HandleSessionStart starts an existing session.
-func HandleSessionStart(cmd core.Command, conn net.Conn, sessionStore *core.SessionStore, nc *nats.Conn, logStore *servicescomponent.LogStore) {
-	var payload core.SessionStartPayload
+// HandleSessionResume resumes a STOPPED session.
+// Resume differs from restart: it is only valid from STOPPED (not FINISHED),
+// and does not accept a new time range — it continues from where it left off.
+// The state machine already allows STOPPED → STARTING.
+func HandleSessionResume(cmd core.Command, conn net.Conn, sessionStore *core.SessionStore, nc *nats.Conn, logStore *servicescomponent.LogStore) {
+	var payload core.SessionActionPayload
 	payloadBytes, err := json.Marshal(cmd.Payload)
 	if err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   core.CommandSessionStart,
+			Command:   core.CommandSessionResume,
 			Status:    core.ERROR,
 			Message:   "Invalid payload format",
 		})
@@ -30,7 +33,7 @@ func HandleSessionStart(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   core.CommandSessionStart,
+			Command:   core.CommandSessionResume,
 			Status:    core.ERROR,
 			Message:   fmt.Sprintf("Payload parsing error: %s", err.Error()),
 		})
@@ -40,40 +43,50 @@ func HandleSessionStart(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 	if payload.SessionID == "" {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   core.CommandSessionStart,
+			Command:   core.CommandSessionResume,
 			Status:    core.ERROR,
 			Message:   "Missing required field: session_id",
 		})
 		return
 	}
 
-	logger.WithRequestID(cmd.RequestID).Infof("Starting session: %s (from=%d to=%d)", payload.SessionID, payload.From, payload.To)
-
 	session, err := sessions.GetSessionByHint(payload.SessionID, sessionStore)
 	if err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   core.CommandSessionStart,
+			Command:   core.CommandSessionResume,
 			Status:    core.ERROR,
 			Message:   err.Error(),
 		})
 		return
 	}
 
-	previousState := session.State
-
-	tr := sessions.TimeRange{From: payload.From, To: payload.To}
-	if err := sessions.StartSession(session, cmd, conn, nc, tr); err != nil {
-		logger.WithRequestID(cmd.RequestID).Errorf("Failed to start session: %s", err.Error())
+	if session.GetState() != core.SessionStopped {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   core.CommandSessionStart,
+			Command:   core.CommandSessionResume,
 			Status:    core.ERROR,
-			Message:   fmt.Sprintf("Failed to start session: %s", err.Error()),
+			Message:   fmt.Sprintf("resume is only valid for STOPPED sessions (current state: %s)", session.GetState()),
+		})
+		return
+	}
+
+	logger.WithRequestID(cmd.RequestID).Infof("Resuming session: %s", payload.SessionID)
+
+	previousState := session.State
+
+	// Resume passes zero TimeRange — no range filtering, continues with same topics.
+	tr := sessions.TimeRange{}
+	if err := sessions.StartSession(session, cmd, conn, nc, tr); err != nil {
+		logger.WithRequestID(cmd.RequestID).Errorf("Failed to resume session: %s", err.Error())
+		core.WriteJSON(conn, core.Response{
+			RequestID: cmd.RequestID,
+			Command:   core.CommandSessionResume,
+			Status:    core.ERROR,
+			Message:   fmt.Sprintf("Failed to resume session: %s", err.Error()),
 			Data: map[string]any{
 				"session_id":     session.ID,
 				"previous_state": string(previousState),
-				"current_state":  string(core.SessionError),
 			},
 		})
 		return
@@ -81,9 +94,9 @@ func HandleSessionStart(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 
 	core.WriteJSON(conn, core.Response{
 		RequestID: cmd.RequestID,
-		Command:   core.CommandSessionStart,
+		Command:   core.CommandSessionResume,
 		Status:    core.OK,
-		Message:   fmt.Sprintf("Session started successfully: %s", utils.GetShortHash(session.ID)),
+		Message:   fmt.Sprintf("Session resumed: %s", utils.GetShortHash(session.ID)),
 		Data: map[string]any{
 			"session_id":     session.ID,
 			"previous_state": string(previousState),

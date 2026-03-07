@@ -1,16 +1,19 @@
 package main
 
 import (
+	"fmt"
 	"log"
+	"time"
 
 	"github.com/eichiarakaki/aegis/internals/core"
 	"github.com/spf13/cobra"
 )
 
-// Flags shared across session subcommands.
 var (
 	sessionMode  string
 	sessionPaths []string
+	sessionFrom  string
+	sessionTo    string
 )
 
 var sessionCmd = &cobra.Command{
@@ -34,9 +37,16 @@ var sessionAttachCmd = &cobra.Command{
 
 var sessionStartCmd = &cobra.Command{
 	Use:   "start <name|id>",
-	Short: "Start a stopped session",
-	Args:  cobra.ExactArgs(1),
-	Run:   runSessionStart,
+	Short: "Start a session",
+	Long: `Start a session. In historical mode, --from and --to optionally restrict the
+time range of data replayed. Values are parsed as RFC3339, YYYY-MM-DD, or unix milliseconds.
+
+Examples:
+  aegisctl session start sad
+  aegisctl session start sad --from 2024-01-01T00:00:00Z --to 2024-01-31T23:59:59Z
+  aegisctl session start sad --from 2024-01-01`,
+	Args: cobra.ExactArgs(1),
+	Run:  runSessionStart,
 }
 
 var sessionStopCmd = &cobra.Command{
@@ -44,6 +54,26 @@ var sessionStopCmd = &cobra.Command{
 	Short: "Stop a running session",
 	Args:  cobra.ExactArgs(1),
 	Run:   runSessionStop,
+}
+
+var sessionRestartCmd = &cobra.Command{
+	Use:   "restart <name|id>",
+	Short: "Restart a FINISHED session (does not relaunch component processes)",
+	Long: `Restart a FINISHED session. Component processes are expected to still be running.
+Optionally provide --from/--to to replay a different time range.
+
+Examples:
+  aegisctl session restart sad
+  aegisctl session restart sad --from 2024-02-01T00:00:00Z`,
+	Args: cobra.ExactArgs(1),
+	Run:  runSessionRestart,
+}
+
+var sessionResumeCmd = &cobra.Command{
+	Use:   "resume <name|id>",
+	Short: "Resume a STOPPED session",
+	Args:  cobra.ExactArgs(1),
+	Run:   runSessionResume,
 }
 
 var sessionListCmd = &cobra.Command{
@@ -70,14 +100,12 @@ var sessionDeleteCmd = &cobra.Command{
 
 func runSessionCreate(_ *cobra.Command, args []string) {
 	name := args[0]
-
 	var payload interface{}
 	if len(sessionPaths) == 0 {
 		payload = core.SessionCreatePayload{Name: name, Mode: sessionMode}
 	} else {
 		payload = core.SessionCreateRunPayload{Name: name, Mode: sessionMode, Paths: sessionPaths}
 	}
-
 	if err := sendCommand(core.CommandSessionCreate, payload); err != nil {
 		log.Fatal(err)
 	}
@@ -93,13 +121,41 @@ func runSessionAttach(_ *cobra.Command, args []string) {
 }
 
 func runSessionStart(_ *cobra.Command, args []string) {
-	if err := sendCommand(core.CommandSessionStart, core.SessionActionPayload{SessionID: args[0]}); err != nil {
+	from, to, err := parseTimeRange(sessionFrom, sessionTo)
+	if err != nil {
+		log.Fatalf("invalid time range: %s", err)
+	}
+	if err := sendCommand(core.CommandSessionStart, core.SessionStartPayload{
+		SessionID: args[0],
+		From:      from,
+		To:        to,
+	}); err != nil {
 		log.Fatal(err)
 	}
 }
 
 func runSessionStop(_ *cobra.Command, args []string) {
 	if err := sendCommand(core.CommandSessionStop, core.SessionActionPayload{SessionID: args[0]}); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func runSessionRestart(_ *cobra.Command, args []string) {
+	from, to, err := parseTimeRange(sessionFrom, sessionTo)
+	if err != nil {
+		log.Fatalf("invalid time range: %s", err)
+	}
+	if err := sendCommand(core.CommandSessionRestart, core.SessionStartPayload{
+		SessionID: args[0],
+		From:      from,
+		To:        to,
+	}); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func runSessionResume(_ *cobra.Command, args []string) {
+	if err := sendCommand(core.CommandSessionResume, core.SessionActionPayload{SessionID: args[0]}); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -122,6 +178,43 @@ func runSessionDelete(_ *cobra.Command, args []string) {
 	}
 }
 
+// ---- helpers ----------------------------------------------------------------
+
+// parseTimeRange parses --from and --to into unix milliseconds.
+// Accepts RFC3339, YYYY-MM-DD, or plain unix ms integer.
+// Returns 0 for empty strings (no bound).
+func parseTimeRange(from, to string) (int64, int64, error) {
+	fromTS, err := parseTimestamp(from)
+	if err != nil {
+		return 0, 0, fmt.Errorf("--from: %w", err)
+	}
+	toTS, err := parseTimestamp(to)
+	if err != nil {
+		return 0, 0, fmt.Errorf("--to: %w", err)
+	}
+	if fromTS != 0 && toTS != 0 && fromTS > toTS {
+		return 0, 0, fmt.Errorf("--from must be before --to")
+	}
+	return fromTS, toTS, nil
+}
+
+func parseTimestamp(s string) (int64, error) {
+	if s == "" {
+		return 0, nil
+	}
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t.UnixMilli(), nil
+	}
+	if t, err := time.Parse("2006-01-02", s); err == nil {
+		return t.UTC().UnixMilli(), nil
+	}
+	var ms int64
+	if _, err := fmt.Sscanf(s, "%d", &ms); err == nil && ms > 0 {
+		return ms, nil
+	}
+	return 0, fmt.Errorf("cannot parse %q — expected RFC3339, YYYY-MM-DD, or unix milliseconds", s)
+}
+
 // ---- flag registration ------------------------------------------------------
 
 func init() {
@@ -130,4 +223,10 @@ func init() {
 
 	sessionAttachCmd.Flags().StringArrayVar(&sessionPaths, "path", nil, "Component binary path (repeatable)")
 	_ = sessionAttachCmd.MarkFlagRequired("path")
+
+	sessionStartCmd.Flags().StringVar(&sessionFrom, "from", "", "Start of time range (RFC3339, YYYY-MM-DD, or unix ms)")
+	sessionStartCmd.Flags().StringVar(&sessionTo, "to", "", "End of time range (RFC3339, YYYY-MM-DD, or unix ms)")
+
+	sessionRestartCmd.Flags().StringVar(&sessionFrom, "from", "", "Start of time range (RFC3339, YYYY-MM-DD, or unix ms)")
+	sessionRestartCmd.Flags().StringVar(&sessionTo, "to", "", "End of time range (RFC3339, YYYY-MM-DD, or unix ms)")
 }

@@ -25,6 +25,8 @@ func init() {
 	sessionCmd.AddCommand(sessionStateCmd)
 	sessionCmd.AddCommand(sessionListCmd)
 	sessionCmd.AddCommand(sessionDeleteCmd)
+	sessionCmd.AddCommand(sessionRestartCmd)
+	sessionCmd.AddCommand(sessionResumeCmd)
 
 	// Component sub-tree
 	rootCmd.AddCommand(componentCmd)

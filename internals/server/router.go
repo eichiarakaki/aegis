@@ -64,6 +64,12 @@ func HandleAegis(conn net.Conn, sessionStore *core.SessionStore, nc *nats.Conn, 
 	case core.CommandSessionDelete:
 		sessions.HandleSessionDelete(cmd, conn, sessionStore)
 
+	case core.CommandSessionRestart:
+		sessions.HandleSessionRestart(cmd, conn, sessionStore, nc, logStore)
+
+	case core.CommandSessionResume:
+		sessions.HandleSessionResume(cmd, conn, sessionStore, nc, logStore)
+
 	// -- Component inspection --------------------------------------
 
 	case core.CommandComponentList:

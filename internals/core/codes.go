@@ -1,7 +1,6 @@
 package core
 
 // CLICommandType holds the string identifier for a CLI/daemon command.
-// Keeping them as constants avoids typos across cmd, server and tests.
 type CLICommandType string
 
 const (
@@ -10,13 +9,15 @@ const (
 	CommandDaemonKill     CLICommandType = "DAEMON_KILL"
 
 	// Sessions
-	CommandSessionCreate CLICommandType = "SESSION_CREATE"
-	CommandSessionAttach CLICommandType = "SESSION_ATTACH"
-	CommandSessionStart  CLICommandType = "SESSION_START"
-	CommandSessionStop   CLICommandType = "SESSION_STOP"
-	CommandSessionList   CLICommandType = "SESSION_LIST"
-	CommandSessionState  CLICommandType = "SESSION_STATE"
-	CommandSessionDelete CLICommandType = "SESSION_DELETE"
+	CommandSessionCreate  CLICommandType = "SESSION_CREATE"
+	CommandSessionAttach  CLICommandType = "SESSION_ATTACH"
+	CommandSessionStart   CLICommandType = "SESSION_START"
+	CommandSessionStop    CLICommandType = "SESSION_STOP"
+	CommandSessionRestart CLICommandType = "SESSION_RESTART"
+	CommandSessionResume  CLICommandType = "SESSION_RESUME"
+	CommandSessionList    CLICommandType = "SESSION_LIST"
+	CommandSessionState   CLICommandType = "SESSION_STATE"
+	CommandSessionDelete  CLICommandType = "SESSION_DELETE"
 
 	// Components
 	CommandComponentList      CLICommandType = "COMPONENT_LIST"
@@ -63,36 +64,27 @@ const (
 
 type ForeignType = string
 
-// Broad Commands
 const (
-	// Lifecycle commands
 	CommandRegister    ForeignType = "REGISTER"
 	CommandRegistered  ForeignType = "REGISTERED"
 	CommandStateUpdate ForeignType = "STATE_UPDATE"
 	CommandShutdown    ForeignType = "SHUTDOWN"
 
-	// Control commands
 	CommandACK  ForeignType = "ACK"
 	CommandNACK ForeignType = "NACK"
 
-	// Config commands
 	CommandConfigure  ForeignType = "CONFIGURE"
 	CommandConfigured ForeignType = "CONFIGURED"
 
-	// Heartbeat commands
 	CommandPing ForeignType = "PING"
 	CommandPong ForeignType = "PONG"
 
-	// Error commands
 	CommandRuntimeError       ForeignType = "RUNTIME_ERROR"
 	CommandRegistrationFailed ForeignType = "REGISTRATION_FAILED"
 	CommandAlreadyRegistered  ForeignType = "ALREADY_REGISTERED"
 
-	// STATE
 	ERROR ForeignType = "ERROR"
 	OK    ForeignType = "OK"
-
-	// ForeignMessageType classifies the message type in the protocol
 
 	MessageTypeControl   ForeignType = "CONTROL"
 	MessageTypeLifecycle ForeignType = "LIFECYCLE"
@@ -102,7 +94,6 @@ const (
 	MessageTypeData      ForeignType = "DATA"
 )
 
-// ForeignComponentState represents the possible states of a component
 type ForeignComponentState string
 
 const (
@@ -128,7 +119,6 @@ const (
 type EnvelopeValidationTypes = string
 
 const (
-	// Errors
 	MISSING_PROTOCOL_VERSION EnvelopeValidationTypes = "MISSING_PROTOCOL_VERSION"
 	MISSING_MESSAGE_ID       EnvelopeValidationTypes = "MISSING_MESSAGE_ID"
 	MISSING_SOURCE           EnvelopeValidationTypes = "MISSING_SOURCE"
@@ -138,7 +128,6 @@ const (
 	MISSING_PAYLOAD          EnvelopeValidationTypes = "MISSING_PAYLOAD"
 )
 
-// Sessions
 type SessionStateType = string
 
 const (

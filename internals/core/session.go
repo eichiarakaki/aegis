@@ -531,6 +531,30 @@ func (store *SessionStore) TotalComponentsByStateFromAllSessions(state ForeignCo
 	return count
 }
 
+// ResetToInitialized resets a FINISHED session back to INITIALIZED so it can
+// be restarted. This is only valid from FINISHED state.
+// Add this method to the Session struct in session.go.
+func (s *Session) ResetToInitialized() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.State != SessionFinished {
+		return fmt.Errorf("ResetToInitialized: invalid from state %s (must be FINISHED)", s.State)
+	}
+
+	s.State = SessionInitialized
+	s.StartedAt = nil
+	s.StoppedAt = nil
+	return nil
+}
+
+// ForceState sets the session state unconditionally. Only use for rollback.
+func (s *Session) ForceState(state SessionStateType) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.State = state
+}
+
 func IsValidSessionStateTransition(from, to SessionStateType) bool {
 	validTransitions := map[SessionStateType][]SessionStateType{
 		SessionInitialized: {SessionStarting, SessionStopping, SessionError},
