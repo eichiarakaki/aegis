@@ -24,7 +24,7 @@ func InitDaemon() {
 		os.Exit(1)
 	}
 
-	aegisSocket := cfg.AegisCLISocket
+	aegisSocket := cfg.AegisCTLSocket
 	componentsSocket := cfg.ComponentsSocket
 
 	sessionStore := core.NewSessionStore()

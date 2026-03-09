@@ -1,43 +1,60 @@
 # data_path depends on the operating system and the user's preference. For example, on Linux, it could be "/home/user/aegis_data", while on Windows, it could be "C:\Users\user\aegis_data". It's important to choose a path that has sufficient storage space and is easily accessible for the backtesting engine to read historical data. Additionally, it's recommended to use a dedicated directory for Aegis data to keep it organized and separate from other files on the system.
 # Note: each person has different preferences for where to store their data.
-data_path: "/home/eichi/media/external_hdd/data"
+data_path: "~/media/external_hdd/data"
 
-# The currencies section defines the symbols, names, types, and supported timeframes for each currency. Health checks will fail if a strategy is triggered for a symbol or timeframe that is not defined in this section. This ensures that the strategy engine and other components only processes existing symbols and timeframes, preventing potential errors and ensuring the integrity of the backtesting and live trading processes.
-currencies:
-  - symbol: "BTCUSDT"
-    name: "Bitcoin"
-    type: "crypto"
-    timeframes:
-      - "1m"
-      - "5m"
-      - "15m"
-      - "30m"
-      - "1h"
-      - "4h"
-      - "1d"
-    datatypes:
-      - klines
-      - liquidationSnapshot
-      - metrics
-      - aggTrades
-      - bookDepth
-      - trades
+# This is the socket where all components will register themselves to the communication engine.
+# The communication engine will keep track of all registered components and their capabilities (e.g., which symbols and timeframes they support).
+components_socket: "/tmp/aegis-components.sock"
+
+# This is the socket where the Aegis Daemon will listen for commands from the Aegis CTL.
+# The CTL can send commands to start or stop sessions, check the status of components, or perform other administrative tasks.
+# The Aegis Daemon will process these commands and respond accordingly.
+aegis_ctl_socket: "/tmp/aegis.sock"
 
 
-# The backtesting mode and the live mode could be merged into a single mode with a flag to indicate whether it's backtesting or live. However, for clarity, separation of concerns, and scalability, it's better to keep them as separate modes. This way, we can have different configurations, data sources, and communication channels for each mode without complicating the logic in the strategy engine.
+fetcher:
+  # If false, the fetcher will run a data integrity checker after fetching data. This can be used to verify that the fetched data is complete and correct. However, it may increase the total execution time of the fetcher, especially if there are many files to check. Set to true to skip the integrity check and fetch data faster, but with less assurance of data quality
+  skip_checksum_verification: true
 
-# Note: The data_firing_socket and communication_socket should be the same for both backtesting and live modes, but it's better to keep them separate to avoid confusion and potential conflicts. For example, if the strategy engine is running in backtesting mode and receives live data from the live data engine, it could lead to incorrect backtesting results. By keeping them separate, we can ensure that the strategy engine only receives the appropriate data for the mode it's running in.
+  extraction:
+    # If true, the fetcher will extract .zip files after downloading them. If false, it will skip the extraction step.
+    enable: true
 
-backtesting:
-  start_date: "2022-01-01"
-  end_date: "2023-01-01"
-  
-  dispatch_socket: ":5556" # This is the socket where the backtesting engine will send historical data to the strategy engine. 
-  # (e.g., topic: "BTCUSDT_1m", payload: {timestamp: 1609459200000, open: 29000, high: 29500, low: 28900, close: 29400, volume: 100})
-  # (e.g., topic: "BTCUSDT_orders", payload: {timestamp: 1609459200000, orders: [{id: "order1", symbol: "BTCUSDT", side: "buy", price: 29000, quantity: 1, status: "filled"}]})
-  # (e.g., topic: "BTCUSDT_trades", payload: {timestamp: 1609459200000, trades: [{id: "trade1", symbol: "BTCUSDT", side: "buy", price: 29000, quantity: 1}]})
+    # If true, the fetcher will overwrite existing files in the output directory when extracting .zip files. If false, the fetcher will skip extracting files that already exist in the output directory. This can be useful for testing the fetching process or if you have already extracted the files and just want to re-download them without re-extracting.
+    overwrite_extracted_files: false
 
-live:
-  graphql_endpoint: "http://localhost:4000/graphql" # This is the GraphQL endpoint where the live data will be fetched from. The strategy engine will subscribe to this endpoint to receive real-time market data.
+    # If true, the fetcher will remove the original .zip files after successfully extracting their contents. This can help save disk space, but it also means that you won't have the original archives for backup or re-extraction if needed. Set to false to keep the .zip files after extraction, which can be useful for debugging or archival purposes, but may consume more disk space
+    remove_after_extraction: true
 
-  dispatch_socket: ":5557" # This is the socket where the live data will be sent to the strategy engine. The strategy engine will subscribe to this socket to receive real-time market data. (e.g., topic: "BTCUSDT_1m", payload: {timestamp: 1609459200000, open: 29000, high: 29500, low: 28900, close: 29400, volume: 100})
+  download:
+    # If true, the fetcher will download files from the S3 bucket. If false, it will skip the download step. This can be useful for testing the extraction process or if you have already downloaded the files and just want to re-extract them
+    enable: true
+
+    start_date: "2024-01-01" # The date from which the fetcher will start fetching data. This should be in the format YYYY-MM-DD.
+    end_date: "2025-12-31" # The date until which the fetcher will fetch data. This should be in the format YYYY-MM-DD.
+
+    # If true, the fetcher will overwrite existing files in the output directory. If false, the fetcher will skip downloading files that already exist in the output directory
+    overwrite_downloaded_files: false
+
+    # The maximum number of concurrent downloads. This can help speed up the fetching process, but it may also increase the load on your network and the S3 bucket. Adjust this value based on your network bandwidth and the expected number of files to download. A higher value may lead to faster downloads, but it can also cause timeouts or throttling if the S3 bucket has rate limits. A lower value may be more stable, but it will take longer to fetch all the data
+    max_concurrent_downloads: 8
+
+
+  # This file defines the cryptocurrencies, data types, and intervals that the Aegis Fetcher will use to fetch data from the S3 bucket. Each cryptocurrency can have multiple data types and intervals
+  cryptocurrencies:
+    - symbol: BTCUSDT
+      datatypes:
+        - klines
+        - liquidationSnapshot
+        - metrics
+        - aggTrades
+        - bookDepth
+        - trades
+      intervals:
+        - 1m
+        - 5m
+        - 15m
+        - 30m
+        - 1h
+        - 4h
+        - 1d

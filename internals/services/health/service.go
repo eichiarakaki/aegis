@@ -224,8 +224,8 @@ func checkDataFiles(session *core.Session) *core.DataFilesHealth {
 	missing := 0
 	var missingList []string
 
-	for _, currency := range cfg.Currencies {
-		for _, tf := range currency.Timeframes {
+	for _, currency := range cfg.Fetcher.Cryptocurrencies {
+		for _, tf := range currency.Intervals {
 			// Expected pattern: <DataPath>/<SYMBOL>/<SYMBOL>_<timeframe>.csv
 			pattern := filepath.Join(cfg.DataPath, strings.ToUpper(currency.Symbol),
 				fmt.Sprintf("%s_%s.csv", strings.ToUpper(currency.Symbol), tf))
