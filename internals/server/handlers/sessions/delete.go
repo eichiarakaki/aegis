@@ -6,12 +6,13 @@ import (
 
 	"github.com/eichiarakaki/aegis/internals/core"
 	"github.com/eichiarakaki/aegis/internals/logger"
+	"github.com/eichiarakaki/aegis/internals/services/component"
 	services_sessions "github.com/eichiarakaki/aegis/internals/services/sessions"
 	"github.com/eichiarakaki/aegis/internals/services/utils"
 )
 
 // HandleSessionDelete processes SESSION_DELETE commands.
-func HandleSessionDelete(cmd core.Command, conn net.Conn, sessionStore *core.SessionStore) {
+func HandleSessionDelete(cmd core.Command, conn net.Conn, sessionStore *core.SessionStore, connPool *component.ConnectionPool) {
 	payload, err := core.DeserializeSessionActionPayload(cmd)
 	if err != nil {
 		core.WriteJSON(conn, core.Response{
@@ -43,7 +44,7 @@ func HandleSessionDelete(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 	sessionName := session.Name
 
 	// Delete session
-	if err := services_sessions.DeleteSession(session, sessionStore); err != nil {
+	if err := services_sessions.DeleteSession(session, sessionStore, connPool); err != nil {
 		logger.WithRequestID(cmd.RequestID).Errorf("Failed to delete session: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,

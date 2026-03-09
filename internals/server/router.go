@@ -62,7 +62,7 @@ func HandleAegis(conn net.Conn, sessionStore *core.SessionStore, nc *nats.Conn, 
 		sessions.HandleSessionState(cmd, conn, sessionStore)
 
 	case core.CommandSessionDelete:
-		sessions.HandleSessionDelete(cmd, conn, sessionStore)
+		sessions.HandleSessionDelete(cmd, conn, sessionStore, pool)
 
 	case core.CommandSessionRestart:
 		sessions.HandleSessionRestart(cmd, conn, sessionStore, nc, logStore)

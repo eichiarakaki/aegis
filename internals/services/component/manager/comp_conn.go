@@ -213,13 +213,13 @@ func WaitForConfigACK(
 }
 
 func BuildTopics(caps core.ComponentCapabilities) []string {
-	timeframedStreams := map[string]bool{
+	timeframeStreams := map[string]bool{
 		"klines": true,
 	}
 
 	var topics []string
 	for _, stream := range caps.RequiresStreams {
-		if timeframedStreams[stream] {
+		if timeframeStreams[stream] {
 			for _, symbol := range caps.SupportedSymbols {
 				for _, tf := range caps.SupportedTimeframes {
 					topics = append(topics, stream+"."+symbol+"."+tf)
@@ -232,66 +232,4 @@ func BuildTopics(caps core.ComponentCapabilities) []string {
 		}
 	}
 	return topics
-}
-
-// WaitForACK reads the ACK.
-func WaitForACK(conn net.Conn) error {
-	if err := conn.SetReadDeadline(time.Now().Add(15 * time.Second)); err != nil {
-		return err
-	}
-	defer func() {
-		// Best-effort – restore zero deadline
-		_ = conn.SetReadDeadline(time.Time{})
-	}()
-
-	var envelope core.Envelope
-	decoder := json.NewDecoder(conn)
-
-	if err := decoder.Decode(&envelope); err != nil {
-		return fmt.Errorf("failed to read ACK: %w", err)
-	}
-
-	if err := envelope.Validate(); err != nil {
-		return fmt.Errorf("invalid ACK envelope: %w", err)
-	}
-
-	if envelope.Command != core.CommandACK {
-		return fmt.Errorf("expected ACK for REBORN, got type=%s command=%s",
-			envelope.Type, envelope.Command)
-	}
-
-	logger.Debugf("Config ACK received")
-	return nil
-}
-
-func Reborn(session *core.Session, conn net.Conn) error {
-	for _, comp := range session.Registry.List() {
-		req := core.NewEnvelope(
-			core.MessageTypeLifecycle,
-			core.CommandReborn,
-			"aegis",
-			"component:"+comp.ID,
-			map[string]interface{}{},
-		)
-
-		if err := json.NewEncoder(conn).Encode(req); err != nil {
-			logger.Errorf("Failed to send REBORN: %s", err)
-			_ = session.Registry.Unregister(comp.ID)
-			continue
-		}
-		logger.Debugf("Reborn command was sent to: %s (%s)", comp.Name, comp.ID)
-
-		// The components have to clean all their data of the previous session at this point
-
-		// Wait for ACK from the components
-		err := WaitForACK(conn)
-		if err != nil {
-			logger.Errorf("Failed to reborn component %s (%s): %s", comp.Name, comp.ID, err)
-			continue
-		}
-
-		logger.Infof("%s (%s) rebirth successfully", comp.Name, comp.ID)
-	}
-
-	return nil
 }
