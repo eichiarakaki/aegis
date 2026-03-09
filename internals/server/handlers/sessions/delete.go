@@ -1,7 +1,6 @@
 package sessions
 
 import (
-	"encoding/json"
 	"fmt"
 	"net"
 
@@ -13,39 +12,13 @@ import (
 
 // HandleSessionDelete processes SESSION_DELETE commands.
 func HandleSessionDelete(cmd core.Command, conn net.Conn, sessionStore *core.SessionStore) {
-	// Deserialize payload
-	var payload core.SessionActionPayload
-	payloadBytes, err := json.Marshal(cmd.Payload)
+	payload, err := core.DeserializeSessionActionPayload(cmd)
 	if err != nil {
-		logger.WithRequestID(cmd.RequestID).Errorf("Failed to marshal payload: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
 			Command:   core.CommandSessionDelete,
 			Status:    core.ERROR,
-			Message:   "Invalid payload format",
-		})
-		return
-	}
-
-	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
-		logger.WithRequestID(cmd.RequestID).Errorf("Failed to unmarshal payload: %s", err.Error())
-		core.WriteJSON(conn, core.Response{
-			RequestID: cmd.RequestID,
-			Command:   core.CommandSessionDelete,
-			Status:    core.ERROR,
-			Message:   fmt.Sprintf("Payload parsing error: %s", err.Error()),
-		})
-		return
-	}
-
-	// Validate required field
-	if payload.SessionID == "" {
-		logger.WithRequestID(cmd.RequestID).Warnf("Session deletion failed: missing session_id")
-		core.WriteJSON(conn, core.Response{
-			RequestID: cmd.RequestID,
-			Command:   core.CommandSessionDelete,
-			Status:    core.ERROR,
-			Message:   "Missing required field: session_id",
+			Message:   err.Error(),
 		})
 		return
 	}

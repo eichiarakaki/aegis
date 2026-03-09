@@ -9,15 +9,16 @@ const (
 	CommandDaemonKill     CLICommandType = "DAEMON_KILL"
 
 	// Sessions
-	CommandSessionCreate  CLICommandType = "SESSION_CREATE"
-	CommandSessionAttach  CLICommandType = "SESSION_ATTACH"
-	CommandSessionStart   CLICommandType = "SESSION_START"
-	CommandSessionStop    CLICommandType = "SESSION_STOP"
-	CommandSessionRestart CLICommandType = "SESSION_RESTART"
-	CommandSessionResume  CLICommandType = "SESSION_RESUME"
-	CommandSessionList    CLICommandType = "SESSION_LIST"
-	CommandSessionState   CLICommandType = "SESSION_STATE"
-	CommandSessionDelete  CLICommandType = "SESSION_DELETE"
+	CommandSessionCreate    CLICommandType = "SESSION_CREATE"
+	CommandSessionCreateRun CLICommandType = "SESSION_CREATE_RUN"
+	CommandSessionAttach    CLICommandType = "SESSION_ATTACH"
+	CommandSessionStart     CLICommandType = "SESSION_START"
+	CommandSessionStop      CLICommandType = "SESSION_STOP"
+	CommandSessionRestart   CLICommandType = "SESSION_RESTART"
+	CommandSessionResume    CLICommandType = "SESSION_RESUME"
+	CommandSessionList      CLICommandType = "SESSION_LIST"
+	CommandSessionState     CLICommandType = "SESSION_STATE"
+	CommandSessionDelete    CLICommandType = "SESSION_DELETE"
 
 	// Components
 	CommandComponentList      CLICommandType = "COMPONENT_LIST"

@@ -106,8 +106,8 @@ func NewEnvelope(
 		Timestamp:       time.Now().UTC().Format(time.RFC3339),
 		Source:          source,
 		Target:          target,
-		Type:            ForeignType(messageType),
-		Command:         ForeignType(command),
+		Type:            messageType,
+		Command:         command,
 		Payload:         payload,
 	}
 }
