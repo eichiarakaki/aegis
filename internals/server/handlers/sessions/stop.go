@@ -12,12 +12,11 @@ import (
 
 // HandleSessionStop stops a running session.
 func HandleSessionStop(cmd core.Command, conn net.Conn, sessionStore *core.SessionStore) {
-	// Deserialize payload
 	payload, err := core.DeserializeSessionActionPayload(cmd)
 	if err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   core.CommandSessionDelete,
+			Command:   core.CommandSessionStop,
 			Status:    core.ERROR,
 			Message:   err.Error(),
 		})

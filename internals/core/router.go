@@ -113,3 +113,54 @@ func DeserializeSessionStartPayload(cmd Command) (*SessionStartPayload, error) {
 
 	return &payload, nil
 }
+
+func DeserializeSessionCreatePayload(cmd Command) (*SessionCreatePayload, error) {
+	var payload SessionCreatePayload
+	payloadBytes, err := json.Marshal(cmd.Payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal payload: %s", err.Error())
+	}
+
+	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal payload: %s", err.Error())
+	}
+
+	// Validate required fields
+	if payload.Name == "" {
+		return nil, fmt.Errorf("missing required field: name")
+	}
+
+	// Validate mode
+	if payload.Mode != "realtime" && payload.Mode != "historical" {
+		return nil, fmt.Errorf("invalid mode, must be 'realtime' or 'historical'")
+	}
+
+	return &payload, nil
+}
+
+func DeserializeSessionCreateRunPayload(cmd Command) (*SessionCreateRunPayload, error) {
+	var payload SessionCreateRunPayload
+	payloadBytes, err := json.Marshal(cmd.Payload)
+	if err != nil {
+		return nil, fmt.Errorf("invalid payload format")
+	}
+
+	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+		return nil, fmt.Errorf("payload parsing error: %s", err.Error())
+	}
+
+	// Validate required fields
+	if payload.Name == "" {
+		return nil, fmt.Errorf("missing required field: name")
+	}
+
+	if payload.Mode != "realtime" && payload.Mode != "historical" {
+		return nil, fmt.Errorf("invalid mode '%s': must be 'realtime' or 'historical'", payload.Mode)
+	}
+
+	if len(payload.Paths) == 0 {
+		return nil, fmt.Errorf("at least one component path is required")
+	}
+
+	return &payload, nil
+}

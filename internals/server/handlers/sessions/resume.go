@@ -21,7 +21,7 @@ func HandleSessionResume(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 	if err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   core.CommandSessionDelete,
+			Command:   core.CommandSessionResume,
 			Status:    core.ERROR,
 			Message:   err.Error(),
 		})

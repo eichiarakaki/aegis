@@ -13,7 +13,7 @@ func HandleSessionState(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 	if err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   core.CommandSessionDelete,
+			Command:   core.CommandSessionState,
 			Status:    core.ERROR,
 			Message:   err.Error(),
 		})

@@ -18,7 +18,7 @@ func HandleSessionStart(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 	if err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   core.CommandSessionRestart,
+			Command:   core.CommandSessionStart,
 			Status:    core.ERROR,
 			Message:   err.Error(),
 		})
