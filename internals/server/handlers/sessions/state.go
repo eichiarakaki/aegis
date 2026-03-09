@@ -1,7 +1,6 @@
 package sessions
 
 import (
-	"fmt"
 	"net"
 
 	"github.com/eichiarakaki/aegis/internals/core"
@@ -10,23 +9,13 @@ import (
 )
 
 func HandleSessionState(cmd core.Command, conn net.Conn, sessionStore *core.SessionStore) {
-	var payload core.SessionActionPayload
-	if err := core.DecodePayload(cmd.Payload, &payload); err != nil {
+	payload, err := core.DeserializeSessionActionPayload(cmd)
+	if err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   core.CommandSessionState,
+			Command:   core.CommandSessionDelete,
 			Status:    core.ERROR,
-			Message:   fmt.Sprintf("Invalid payload: %s", err),
-		})
-		return
-	}
-
-	if payload.SessionID == "" {
-		core.WriteJSON(conn, core.Response{
-			RequestID: cmd.RequestID,
-			Command:   core.CommandSessionState,
-			Status:    core.ERROR,
-			Message:   "Missing required field: session_id",
+			Message:   err.Error(),
 		})
 		return
 	}

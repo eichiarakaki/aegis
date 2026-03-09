@@ -1,7 +1,6 @@
 package sessions
 
 import (
-	"encoding/json"
 	"fmt"
 	"net"
 
@@ -14,26 +13,13 @@ import (
 // HandleSessionStop stops a running session.
 func HandleSessionStop(cmd core.Command, conn net.Conn, sessionStore *core.SessionStore) {
 	// Deserialize payload
-	var payload core.SessionActionPayload
-	payloadBytes, err := json.Marshal(cmd.Payload)
+	payload, err := core.DeserializeSessionActionPayload(cmd)
 	if err != nil {
-		logger.WithRequestID(cmd.RequestID).Errorf("Failed to marshal payload: %s", err.Error())
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
-			Command:   core.CommandSessionStop,
+			Command:   core.CommandSessionDelete,
 			Status:    core.ERROR,
-			Message:   "Invalid payload format",
-		})
-		return
-	}
-
-	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
-		logger.WithRequestID(cmd.RequestID).Errorf("Failed to unmarshal payload: %s", err.Error())
-		core.WriteJSON(conn, core.Response{
-			RequestID: cmd.RequestID,
-			Command:   core.CommandSessionStop,
-			Status:    core.ERROR,
-			Message:   fmt.Sprintf("Payload parsing error: %s", err.Error()),
+			Message:   err.Error(),
 		})
 		return
 	}

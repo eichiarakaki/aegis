@@ -78,7 +78,7 @@ func streamComponentLogs(sessionID, ref string, follow, all bool) error {
 	f, err := os.Open(logPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("no log file found for component %q — has the session been started?", componentName)
+			return fmt.Errorf("no log file found for component %q — has the session been started", componentName)
 		}
 		return fmt.Errorf("open log file: %w", err)
 	}

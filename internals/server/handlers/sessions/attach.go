@@ -1,7 +1,6 @@
 package sessions
 
 import (
-	"encoding/json"
 	"fmt"
 	"net"
 
@@ -13,36 +12,13 @@ import (
 
 // HandleSessionAttach attaches new components to an existing session.
 func HandleSessionAttach(cmd core.Command, conn net.Conn, sessionStore *core.SessionStore) {
-	// Deserialize payload
-	var payload core.SessionAttachPayload
-	payloadBytes, err := json.Marshal(cmd.Payload)
+	payload, err := core.DeserializeSessionAttachPayload(cmd)
 	if err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
 			Command:   core.CommandSessionAttach,
 			Status:    core.ERROR,
-			Message:   "Invalid payload format",
-		})
-		return
-	}
-
-	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
-		core.WriteJSON(conn, core.Response{
-			RequestID: cmd.RequestID,
-			Command:   core.CommandSessionAttach,
-			Status:    core.ERROR,
-			Message:   fmt.Sprintf("Payload parsing error: %s", err.Error()),
-		})
-		return
-	}
-
-	// Validate required fields
-	if payload.SessionID == "" {
-		core.WriteJSON(conn, core.Response{
-			RequestID: cmd.RequestID,
-			Command:   core.CommandSessionAttach,
-			Status:    core.ERROR,
-			Message:   "Missing required field: session_id",
+			Message:   err.Error(),
 		})
 		return
 	}
