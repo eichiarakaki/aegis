@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 
 	"github.com/eichiarakaki/aegis/internals/config"
 	"github.com/eichiarakaki/aegis/internals/core"
@@ -58,7 +59,8 @@ func LaunchComponents(session *core.Session) error {
 		// Skip relaunching only if the process has already connected and completed
 		// at least part of the handshake. INIT and REGISTERED are placeholder states
 		// that exist before the process connects — they must be launched.
-		if comp, exists := session.Registry.Get(componentID); exists {
+		comp, exists := session.Registry.Get(componentID)
+		if exists {
 			switch comp.State {
 			case core.ComponentStateInitializing,
 				core.ComponentStateReady,
@@ -95,8 +97,10 @@ func LaunchComponents(session *core.Session) error {
 			continue
 		}
 
-		logger.Infof("Launched %s (pid %d, id %s) → session %s",
+		logger.Infof("Launched %s (pid %d, id %s) -> session %s",
 			entry.Path, cmd.Process.Pid, componentID, session.ID)
+		// Registering component's PID
+		comp.PID = strconv.Itoa(cmd.Process.Pid)
 
 		go func(lf *lumberjack.Logger) {
 			_ = cmd.Wait()

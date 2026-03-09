@@ -9,6 +9,7 @@ import (
 type Component struct {
 	ID           string                `json:"id"`
 	SessionID    string                `json:"session_id"`
+	PID          string                `json:"pid,omitempty"`
 	Name         string                `json:"name"`
 	Version      string                `json:"version"`
 	State        ForeignComponentState `json:"state"`
