@@ -30,15 +30,15 @@ func NewFetchUseCase(lister domain.ObjectLister, downloader domain.FileDownloade
 // Only files whose embedded date falls within [StartDate, EndDate] are downloaded.
 // Returns the total number of files queued.
 func (uc *FetchUseCase) Run(dataPath string) int {
-	cfg := config.LoadAegisFetcher()
+	cfg, _ := config.LoadAegis()
 
-	if !cfg.Download.Enable {
+	if !cfg.Fetcher.Download.Enable {
 		logger.Info("Download disabled in config — skipping download phase")
 		return 0
 	}
 
 	// Parse date range from config strings ("2024-01-21" format)
-	dateRange, err := parseDateRange(cfg.Download.StartDate, cfg.Download.EndDate)
+	dateRange, err := parseDateRange(cfg.Fetcher.Download.StartDate, cfg.Fetcher.Download.EndDate)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[ERR] invalid date range in config: %v\n", err)
 		return 0
@@ -53,9 +53,9 @@ func (uc *FetchUseCase) Run(dataPath string) int {
 	jobs := make(chan domain.Job, 1000)
 
 	var wg sync.WaitGroup
-	for i := 0; i < cfg.Download.MaxConcurrentDownloads; i++ {
+	for i := 0; i < cfg.Fetcher.Download.MaxConcurrentDownloads; i++ {
 		wg.Add(1)
-		go uc.worker(i+1, jobs, &wg, cfg.Download.OverwriteDownloadedFiles, dateRange)
+		go uc.worker(i+1, jobs, &wg, cfg.Fetcher.Download.OverwriteDownloadedFiles, dateRange)
 	}
 
 	totalFiles := 0
@@ -132,10 +132,10 @@ func filterKeys(keys []string) []string {
 
 // buildPrefixes constructs all (S3 prefix, local destination) pairs for every
 // combination of symbol, data type, and kline interval (where applicable).
-func buildPrefixes(dataPath string, cfg *config.AegisFetcherConfig) []domain.Prefix {
+func buildPrefixes(dataPath string, cfg *config.AegisConfig) []domain.Prefix {
 	var prefixes []domain.Prefix
 
-	for _, sym := range cfg.Cryptocurrencies {
+	for _, sym := range cfg.Fetcher.Cryptocurrencies {
 		for _, dt := range sym.DataTypes {
 			switch dt {
 			case "klines":

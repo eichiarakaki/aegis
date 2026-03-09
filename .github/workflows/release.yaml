@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.0'
+
+      - name: Build binaries
+        run: |
+          mkdir -p dist
+          for BINARY in aegisctl aegisd aegis-fetcher; do
+            for PLATFORM in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+              OS=${PLATFORM%/*}
+              ARCH=${PLATFORM#*/}
+              GOOS=$OS GOARCH=$ARCH go build \
+                -o "dist/${BINARY}-${OS}-${ARCH}" \
+                "./cmd/${BINARY}"
+              echo "Built ${BINARY}-${OS}-${ARCH}"
+            done
+          done
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          body: |
+            ## Installation
+  ```sh
+  curl -fsSL https://raw.githubusercontent.com/eichiarakaki/aegis/main/install.sh | sh
+  ```
+  
+  Or manually download the binary for your platform below.
+files: dist/*

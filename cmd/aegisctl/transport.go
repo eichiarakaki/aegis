@@ -17,7 +17,7 @@ func requestJSON(cmdType core.CLICommandType, payload interface{}) (map[string]a
 		return nil, err
 	}
 
-	conn, err := net.Dial("unix", cfg.AegisCLISocket)
+	conn, err := net.Dial("unix", cfg.AegisCTLSocket)
 	if err != nil {
 		return nil, fmt.Errorf("connect to daemon socket: %w", err)
 	}
@@ -49,7 +49,7 @@ func sendCommand(cmdType core.CLICommandType, payload interface{}) error {
 		fmt.Fprintln(os.Stderr, "[debug] daemon returned no response body")
 		return nil
 	}
-	
+
 	if core.DebugEnabled {
 		raw, _ := json.MarshalIndent(resp, "", "  ")
 		fmt.Fprintln(os.Stderr, string(raw))

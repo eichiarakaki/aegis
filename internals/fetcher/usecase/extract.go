@@ -19,9 +19,9 @@ func NewExtractUseCase(extractor domain.Extractor) *ExtractUseCase {
 // Run extracts every .zip archive found under dataPath.
 // Returns the number of failures.
 func (uc *ExtractUseCase) Run(dataPath string) int {
-	cfg := config.LoadAegisFetcher()
+	cfg, _ := config.LoadAegis()
 
-	failures := uc.extractor.UnzipAll(dataPath, cfg.Extraction.RemoveAfterExtraction, cfg.Extraction.OverrideExtractedFiles, cfg.Extraction.Enable)
+	failures := uc.extractor.UnzipAll(dataPath, cfg.Fetcher.Extraction.RemoveAfterExtraction, cfg.Fetcher.Extraction.OverwriteExtractedFiles, cfg.Fetcher.Extraction.Enable)
 
 	if failures > 0 {
 		logger.Infof("WARN %d extraction failure(s) — review errors above", failures)

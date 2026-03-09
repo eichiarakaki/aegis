@@ -19,9 +19,9 @@ func NewChecksumUseCase(verifier domain.ChecksumVerifier) *ChecksumUseCase {
 // Run validates every .CHECKSUM sidecar found under dataPath.
 // Returns the number of failures.
 func (uc *ChecksumUseCase) Run(dataPath string) int {
-	aegisFetcherCfg := config.LoadAegisFetcher()
+	aegisFetcherCfg, _ := config.LoadAegis()
 
-	if aegisFetcherCfg.SkipChecksumVerification {
+	if aegisFetcherCfg.Fetcher.SkipChecksumVerification {
 		logger.Warn("Checksum verification is disabled via config — skipping integrity checks")
 		return 0
 	}
