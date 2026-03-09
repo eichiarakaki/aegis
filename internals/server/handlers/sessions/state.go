@@ -20,7 +20,7 @@ func HandleSessionState(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 		return
 	}
 
-	session, err := sessions.GetSessionByHint(payload.SessionID, sessionStore)
+	session, err := sessionStore.GetByHint(payload.SessionID)
 	if err != nil {
 		logger.WithRequestID(cmd.RequestID).Warnf("Session not found: %s", payload.SessionID)
 		core.WriteJSON(conn, core.Response{

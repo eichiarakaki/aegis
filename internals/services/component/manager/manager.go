@@ -10,13 +10,17 @@ import (
 	"github.com/eichiarakaki/aegis/internals/core"
 	"github.com/eichiarakaki/aegis/internals/logger"
 	servicescomponent "github.com/eichiarakaki/aegis/internals/services/component"
-	"github.com/eichiarakaki/aegis/internals/services/sessions"
 	"github.com/eichiarakaki/aegis/internals/services/utils"
 )
 
 // HandleComponentConnection manages incoming connections from components.
 func HandleComponentConnection(conn net.Conn, sessionStore *core.SessionStore, pool *servicescomponent.ConnectionPool) {
-	defer conn.Close()
+	defer func(conn net.Conn) {
+		err := conn.Close()
+		if err != nil {
+			logger.Errorf("error closing connection: %v", err)
+		}
+	}(conn)
 
 	logging := logger.WithComponent("ComponentManager").WithField("remote_addr", conn.RemoteAddr().String())
 	logging.Debugf("Component connection established")
@@ -62,7 +66,7 @@ func HandleComponentConnection(conn net.Conn, sessionStore *core.SessionStore, p
 	logging = logging.WithField("component_name", registerPayload.ComponentName)
 
 	// STEP 2: Resolve session
-	session, err := sessions.GetSessionByHint(registerPayload.SessionToken, sessionStore)
+	session, err := sessionStore.GetByHint(registerPayload.SessionToken)
 	if err != nil {
 		logging.Errorf("Session not found: %s", err)
 		sendErrorResponse(conn, registerEnvelope.MessageID, core.MISSING_SESSION_TOKEN, "The token provided does not match any active session.", false)
@@ -97,7 +101,7 @@ func HandleComponentConnection(conn net.Conn, sessionStore *core.SessionStore, p
 				return
 			}
 			if err := registry.UpdateState(componentID, core.ComponentStateRegistered); err != nil {
-				logging.Errorf("Failed to transition INIT→REGISTERED: %s", err)
+				logging.Errorf("Failed to transition INIT -> REGISTERED: %s", err)
 				sendErrorResponse(conn, registerEnvelope.MessageID, core.REGISTRATION_FAILED, err.Error(), false)
 				return
 			}
@@ -106,7 +110,7 @@ func HandleComponentConnection(conn net.Conn, sessionStore *core.SessionStore, p
 
 		case exists:
 			// Case B: component reconnecting after a crash/disconnect — reset state
-			logging.Infof("Component reconnecting (was %s) — resetting to REGISTERED", existing.State)
+			logging.Infof("Component reconnecting (was %s) - resetting to REGISTERED", existing.State)
 			if err := registry.UpdateFromRegister(componentID, registerPayload.ComponentName, registerPayload.Version, registerPayload.Capabilities); err != nil {
 				logging.Errorf("Failed to update reconnecting component: %s", err)
 				sendErrorResponse(conn, registerEnvelope.MessageID, core.REGISTRATION_FAILED, err.Error(), false)
@@ -120,7 +124,7 @@ func HandleComponentConnection(conn net.Conn, sessionStore *core.SessionStore, p
 			comp, _ = registry.Get(componentID)
 
 		default:
-			// Case C: pre-assigned ID but no entry — register fresh
+			// Case C: pre-assigned ID but no entry - register fresh
 			comp = &core.Component{
 				ID:           componentID,
 				Name:         registerPayload.ComponentName,
@@ -137,9 +141,9 @@ func HandleComponentConnection(conn net.Conn, sessionStore *core.SessionStore, p
 			logging.Debugf("Registered fresh (no placeholder found): %s", componentID)
 		}
 	} else {
-		// Case D: manual connect — generate ID
+		// Case D: manual connect - generate ID
 		componentID = utils.GenerateComponentID()
-		logging.Debugf("No component_id in REGISTER — generated: %s", componentID)
+		logging.Debugf("No component_id in REGISTER - generated: %s", componentID)
 		comp = &core.Component{
 			ID:           componentID,
 			Name:         registerPayload.ComponentName,
@@ -203,7 +207,7 @@ func HandleComponentConnection(conn net.Conn, sessionStore *core.SessionStore, p
 		_ = registry.Unregister(componentID)
 		return
 	}
-	logging.Infof("Sent CONFIGURE — socket=%s topics=%v", streamSocketPath, newTopics)
+	logging.Infof("Sent CONFIGURE - socket=%s topics=%v", streamSocketPath, newTopics)
 
 	// STEP 7: Wait for ACK of CONFIGURE
 	if err := WaitForConfigACK(conn, dec, configureEnvelope.MessageID, logging); err != nil {
@@ -212,7 +216,7 @@ func HandleComponentConnection(conn net.Conn, sessionStore *core.SessionStore, p
 		_ = registry.Unregister(componentID)
 		return
 	}
-	logging.Infof("Configuration acknowledged — handing off to lifecycle loop")
+	logging.Infof("Configuration acknowledged - handing off to lifecycle loop")
 
 	// STEP 8: Steady-state lifecycle loop
 	handleComponentLifecycle(conn, dec, registry, comp, logging)
@@ -285,8 +289,6 @@ func handleLifecycleMessage(
 		}
 		log.Infof("Component state updated to: %s", payload.State)
 
-		// Reset the heartbeat clock when the component becomes RUNNING so the
-		// monitor doesn't time it out based on when the placeholder was created.
 		if payload.State == core.ComponentStateRunning {
 			_ = registry.RefreshHeartbeat(comp.ID)
 		}

@@ -38,7 +38,7 @@ func HandleSessionStop(cmd core.Command, conn net.Conn, sessionStore *core.Sessi
 	logger.WithRequestID(cmd.RequestID).Infof("Stopping session: %s", payload.SessionID)
 
 	// Get session
-	session, err := sessions.GetSessionByHint(payload.SessionID, sessionStore)
+	session, err := sessionStore.GetByHint(payload.SessionID)
 	if err != nil {
 		logger.WithRequestID(cmd.RequestID).Warnf("Session not found: %s", payload.SessionID)
 		core.WriteJSON(conn, core.Response{

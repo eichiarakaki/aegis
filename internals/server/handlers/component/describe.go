@@ -7,7 +7,6 @@ import (
 	"github.com/eichiarakaki/aegis/internals/core"
 	"github.com/eichiarakaki/aegis/internals/logger"
 	servicescomponent "github.com/eichiarakaki/aegis/internals/services/component"
-	servicessessions "github.com/eichiarakaki/aegis/internals/services/sessions"
 )
 
 func HandleComponentDescribe(cmd core.Command, conn net.Conn, sessionStore *core.SessionStore) {
@@ -32,7 +31,7 @@ func HandleComponentDescribe(cmd core.Command, conn net.Conn, sessionStore *core
 		return
 	}
 
-	session, err := servicessessions.GetSessionByHint(payload.SessionID, sessionStore)
+	session, err := sessionStore.GetByHint(payload.SessionID)
 	if err != nil {
 		logger.WithRequestID(cmd.RequestID).Warnf("Session not found: %s", payload.SessionID)
 		core.WriteJSON(conn, core.Response{

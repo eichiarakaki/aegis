@@ -22,7 +22,7 @@ import (
 
 const ProtocolVersion = "0.1.0"
 
-// Envelope is the standard structure for ALL the messages
+// Envelope is the standard structure for communicating with the components
 type Envelope struct {
 	ProtocolVersion string         `json:"protocol_version"`
 	MessageID       string         `json:"message_id"`

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/eichiarakaki/aegis/internals/logger"
 )
 
 type Session struct {
@@ -529,6 +531,44 @@ func (store *SessionStore) TotalComponentsByStateFromAllSessions(state ForeignCo
 		}
 	}
 	return count
+}
+
+// GetByHint resolves a session from a token that may be either the session ID
+// itself or the session token (hint).
+func (store *SessionStore) GetByHint(hint string) (*Session, error) {
+	if hint == "" {
+		logger.Warn("GetSessionByHint: empty hint provided")
+		return nil, fmt.Errorf("empty hint provided")
+	}
+
+	logger.WithComponent("sessions").Debugf("Resolving session hint: %s", hint)
+
+	// Try full ID first (highest priority, most specific)
+	if session, found := store.GetSessionByID(hint); found {
+		logger.WithComponent("sessions").Debugf("Session resolved by full ID: %s", session.ID)
+		return session, nil
+	}
+
+	// Try ID approximation (first N characters)
+	if session, found := store.GetSessionByIDApproximation(hint); found {
+		logger.WithComponent("sessions").Debugf("Session resolved by ID approximation: %s", session.ID)
+		return session, nil
+	}
+
+	// Try name (lowest priority, may have collisions)
+	sessions, count := store.GetSessionsByName(hint)
+	if count > 1 {
+		logger.WithComponent("sessions").Warnf("Multiple sessions found with name '%s' (%d matches)", hint, count)
+		return nil, fmt.Errorf("multiple sessions found with name '%s' (%d matches). Use session ID for disambiguation", hint, count)
+	}
+
+	if count == 1 && sessions != nil && len(sessions) > 0 {
+		logger.WithComponent("sessions").Debugf("Session resolved by name: %s", sessions[0].Name)
+		return sessions[0], nil
+	}
+
+	logger.WithComponent("sessions").Warnf("Session not found: %s", hint)
+	return nil, fmt.Errorf("session not found: %s", hint)
 }
 
 // ResetToInitialized resets a FINISHED session back to INITIALIZED so it can

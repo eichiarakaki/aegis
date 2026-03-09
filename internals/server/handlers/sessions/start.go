@@ -27,7 +27,7 @@ func HandleSessionStart(cmd core.Command, conn net.Conn, sessionStore *core.Sess
 
 	logger.WithRequestID(cmd.RequestID).Infof("Starting session: %s (from=%d to=%d)", payload.SessionID, payload.From, payload.To)
 
-	session, err := sessions.GetSessionByHint(payload.SessionID, sessionStore)
+	session, err := sessionStore.GetByHint(payload.SessionID)
 	if err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
