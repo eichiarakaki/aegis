@@ -1,5 +1,5 @@
 
-### Responses to the Aegis CTL
+### TODO
 - [x] Normalize the responses
 - [x] Make the orchestrator
 - [x] Proper handling of 'stop' session
