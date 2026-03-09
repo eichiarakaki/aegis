@@ -36,7 +36,7 @@ func HandleSessionAttach(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 	logger.WithRequestID(cmd.RequestID).Infof("Attaching %d components to session %s", len(payload.Paths), payload.SessionID)
 
 	// Get session
-	session, err := sessionsvc.GetSessionByHint(payload.SessionID, sessionStore)
+	session, err := sessionStore.GetByHint(payload.SessionID)
 	if err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,

@@ -70,6 +70,7 @@ const (
 	CommandRegistered  ForeignType = "REGISTERED"
 	CommandStateUpdate ForeignType = "STATE_UPDATE"
 	CommandShutdown    ForeignType = "SHUTDOWN"
+	CommandReborn      ForeignType = "REBORN"
 
 	CommandACK  ForeignType = "ACK"
 	CommandNACK ForeignType = "NACK"

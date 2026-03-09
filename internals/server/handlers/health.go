@@ -8,7 +8,6 @@ import (
 	"github.com/eichiarakaki/aegis/internals/core"
 	servicescomponent "github.com/eichiarakaki/aegis/internals/services/component"
 	servicehealth "github.com/eichiarakaki/aegis/internals/services/health"
-	servicessessions "github.com/eichiarakaki/aegis/internals/services/sessions"
 	"github.com/nats-io/nats.go"
 )
 
@@ -48,7 +47,7 @@ func HandleHealthCheckSession(
 		return
 	}
 
-	session, err := servicessessions.GetSessionByHint(payload.SessionID, sessionStore)
+	session, err := sessionStore.GetByHint(payload.SessionID)
 	if err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
@@ -86,7 +85,7 @@ func HandleHealthCheckComponent(
 		return
 	}
 
-	session, err := servicessessions.GetSessionByHint(payload.SessionID, sessionStore)
+	session, err := sessionStore.GetByHint(payload.SessionID)
 	if err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,

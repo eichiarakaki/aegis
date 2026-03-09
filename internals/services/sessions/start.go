@@ -43,6 +43,7 @@ func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *na
 	if registered > expected {
 		expected = registered
 	}
+	
 	if expected > 0 {
 		logger.Infof("Session %s: waiting up to %s for %d component(s) to be ready",
 			session.ID, ComponentReadyTimeout, expected)

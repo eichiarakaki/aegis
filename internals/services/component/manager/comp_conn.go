@@ -8,7 +8,6 @@ import (
 
 	"github.com/eichiarakaki/aegis/internals/core"
 	"github.com/eichiarakaki/aegis/internals/logger"
-	"github.com/eichiarakaki/aegis/internals/services/utils"
 )
 
 func RegisteredResponse(correlationID, componentID, sessionID string) (*core.Envelope, error) {
@@ -213,22 +212,14 @@ func WaitForConfigACK(
 	return nil
 }
 
-func NewMessageID() string {
-	return utils.GenerateSecureToken()
-}
-
-func Rfc3339Now() string {
-	return time.Now().UTC().Format(time.RFC3339)
-}
-
 func BuildTopics(caps core.ComponentCapabilities) []string {
-	timeframedStreams := map[string]bool{
+	timeframeStreams := map[string]bool{
 		"klines": true,
 	}
 
 	var topics []string
 	for _, stream := range caps.RequiresStreams {
-		if timeframedStreams[stream] {
+		if timeframeStreams[stream] {
 			for _, symbol := range caps.SupportedSymbols {
 				for _, tf := range caps.SupportedTimeframes {
 					topics = append(topics, stream+"."+symbol+"."+tf)

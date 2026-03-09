@@ -25,7 +25,7 @@ func HandleSessionRestart(cmd core.Command, conn net.Conn, sessionStore *core.Se
 		return
 	}
 
-	session, err := sessions.GetSessionByHint(payload.SessionID, sessionStore)
+	session, err := sessionStore.GetByHint(payload.SessionID)
 	if err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
