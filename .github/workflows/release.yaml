@@ -32,11 +32,5 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          body: |
-            ## Installation
-  ```sh
-  curl -fsSL https://raw.githubusercontent.com/eichiarakaki/aegis/main/install.sh | sh
-  ```
-  
-  Or manually download the binary for your platform below.
-files: dist/*
+          body_path: .github/RELEASE_TEMPLATE.md
+          files: dist/**

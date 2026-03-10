@@ -30,7 +30,6 @@
           # Productivity & Automation (DX)
           nativeBuildInputs = with pkgs; [
             air           # Hot reload for Go apps
-            just          # Modern command runner (better than Makefile)
             gh            # GitHub CLI
           ];
 
