@@ -40,21 +40,56 @@ can operate outside its declared lifecycle.
 Data distribution is handled by an event-driven orchestrator built on NATS, which fans
 market data out to subscribed components through dedicated topic streams.
 Each component only receives the symbols, timeframes, and stream types it explicitly
-declared during registration — orderbook ticks, kline data, trade feeds — keeping
+declared during registration — orderbook snapshots, kline data, trade feeds — keeping
 components fully decoupled from one another and from the data source itself.
 A strategy engine never needs to know a risk manager exists; both simply subscribe to
 what they need.
 
-For historical backtesting, the orchestrator merges all data types — klines, trades,
-aggregated trades, order book depth, and metrics — into a globally ordered stream.
-All symbols are synchronized to the same timestamp before the clock advances, so a
-strategy testing cross-symbol correlations always sees BTCUSDT and ETHUSDT at the same
-point in time. This is not best-effort: no symbol can advance until every symbol has
-published its current tick.
+Sessions run in one of two modes:
 
-The CLI (aegis) provides full operator control: create and name sessions, attach
-component binaries with dynamic environment injection, start and stop sessions,
-inspect component state, and query live health — all without touching a config file.
+Historical — the orchestrator reads from CSV files fetched from Binance Vision via
+aegis-fetcher. All data types across all symbols are merged into a globally ordered
+stream. Every symbol is synchronized to the same timestamp before the clock advances,
+so a strategy testing cross-symbol correlations always sees BTCUSDT and ETHUSDT at the
+same point in time. This is not best-effort: no symbol can advance until every symbol
+has published its current tick.
+
+Realtime — the orchestrator connects to Binance WebSocket streams. There is no clock.
+Messages are published to components the instant they arrive from the exchange, keeping
+latency minimal. The data gap between the two modes — Binance Vision files are typically
+a few days behind — is covered by switching to realtime for recent data.
+
+The CLI (aegisctl) provides full operator control: create and name sessions, attach
+component binaries with dynamic environment injection, start and stop sessions, inspect
+component state, and query live health — all without touching a config file.
+
+---
+
+Historical and Realtime Compatibility
+--------------------------------------
+
+A core design goal is that components written for one mode work unmodified in the other.
+This is achieved at two levels.
+
+At the transport level, both modes deliver data through the same DataStreamServer on the
+same Unix socket path. The component connects, completes the same handshake, and reads
+the same newline-delimited JSON envelope regardless of whether the data originated from
+a CSV file on disk or a live WebSocket frame from Binance:
+
+  { "session_id": "...", "topic": "aegis.<sid>.<type>.<symbol>", "ts": 1767139200000, "data": { ... } }
+
+At the schema level, every WebSocket parser produces the exact same struct that the
+CSV parser for the same data type produces. A kline arriving from a 2024 CSV file and
+a kline arriving from the live fstream WebSocket are marshalled into the same Kline
+struct before being handed to the publisher. The component receives identical JSON in
+both cases and has no way to distinguish the source.
+
+The one deliberate exception is bookDepth, which exists only in historical mode because
+Binance does not expose a WebSocket stream with the same aggregated semantics
+(percentage, depth, notional). Its realtime counterpart is orderBook, which delivers
+raw bid/ask price levels instead. These are two distinct data types with different
+schemas — a component that needs order book data in both modes must handle both.
+All other data types (klines, aggTrades, trades) are fully compatible across modes.
 
 ---
 
