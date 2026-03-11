@@ -1,0 +1,20 @@
+Purpose of Aegis Daemon Real-Time Stream
+========================================
+
+El proposito de este Daemon separado del Daemon principal es
+poder ofrecer servicio real-time no solo al daemon original,
+sino tambien a herramientas cuantitativas del trader via
+el daemon principal.
+
+-----
+
+What's the difference between a tool and a regular Component?
+-------------------------------------------------------------
+
+A component or set of components in a session are 
+instruments that need to be synchronized and maintain a 
+sequential data flow. You can't suddenly rewind the 
+Global Clock to analyze better a moment. On the other 
+hand, a quantitative tool can make many requests for 
+different time periods, useful for flexible tools that 
+require time periods instead of purely sequential data.

@@ -12,6 +12,7 @@ import (
 type ParseFunc func(row []string) (ts int64, payload []byte, err error)
 
 // parserRegistry maps data_type → ParseFunc and priority.
+// "orderBook" is absent because it has no CSV representation — it is realtime only.
 var parserRegistry = map[string]struct {
 	Parse    ParseFunc
 	Priority int
@@ -21,21 +22,31 @@ var parserRegistry = map[string]struct {
 	"trades":    {schema.ParseTrade, schema.PriorityTrade},
 	"bookDepth": {schema.ParseBookDepth, schema.PriorityBookDepth},
 	"metrics":   {schema.ParseMetrics, schema.PriorityMetrics},
+	// "orderBook" intentionally absent — realtime only, no CSV parser.
+}
+
+// realtimePriorityRegistry holds priority values for data types that exist
+// only in realtime mode (no CSV equivalent).
+var realtimePriorityRegistry = map[string]int{
+	"orderBook": schema.PriorityOrderBook,
 }
 
 // DataTypeInfo returns the ParseFunc and priority for a given data type.
-// Returns an error if the data type is unknown.
+// For realtime-only types (e.g. "orderBook") it returns (nil, priority, nil) —
+// callers must check whether ParseFunc is nil before using it for CSV parsing.
 func DataTypeInfo(dataType string) (ParseFunc, int, error) {
-	entry, ok := parserRegistry[dataType]
-	if !ok {
-		return nil, 0, fmt.Errorf("unknown data type: %q", dataType)
+	if entry, ok := parserRegistry[dataType]; ok {
+		return entry.Parse, entry.Priority, nil
 	}
-	return entry.Parse, entry.Priority, nil
+	if priority, ok := realtimePriorityRegistry[dataType]; ok {
+		return nil, priority, nil
+	}
+	return nil, 0, fmt.Errorf("unknown data type: %q", dataType)
 }
 
 // RawRow is a fully parsed, normalized row ready to be published.
 type RawRow struct {
-	Timestamp int64 // canonical unix ms
+	Timestamp int64
 	DataType  string
 	Priority  int
 	Topic     string // full NATS topic: aegis.<sid>.<type>.<sym>[.<tf>]
@@ -43,22 +54,12 @@ type RawRow struct {
 }
 
 // DataSource is the common interface for both CSV and live feed sources.
-// Each DataSource represents a single (symbol, data_type[, timeframe]) stream.
 type DataSource interface {
-	// Peek returns the timestamp of the next available row without consuming it.
-	// Returns (0, io.EOF) when the source is fully exhausted.
 	Peek() (int64, error)
-
-	// Drain consumes and returns all rows whose timestamp equals ts.
-	// If the next row has a different timestamp, returns an empty slice and nil.
 	Drain(ts int64) ([]RawRow, error)
-
-	// Topic returns the full NATS topic string for this source.
 	Topic() string
-
-	// DataType returns the data type string ("klines", "trades", etc.)
 	DataType() string
 }
 
-// Sentinel re-export so callers don't import io directly.
+// ErrExhausted is returned by Peek/Drain when the source has no more data.
 var ErrExhausted = io.EOF

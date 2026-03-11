@@ -27,12 +27,6 @@ fetcher:
     remove_after_extraction: true
 
   download:
-    # If true, the fetcher will download files from the S3 bucket. If false, it will skip the download step. This can be useful for testing the extraction process or if you have already downloaded the files and just want to re-extract them
-    enable: true
-
-    start_date: "2024-01-01" # The date from which the fetcher will start fetching data. This should be in the format YYYY-MM-DD.
-    end_date: "2025-12-31" # The date until which the fetcher will fetch data. This should be in the format YYYY-MM-DD.
-
     # If true, the fetcher will overwrite existing files in the output directory. If false, the fetcher will skip downloading files that already exist in the output directory
     overwrite_downloaded_files: false
 
