@@ -17,19 +17,18 @@ func NewChecksumUseCase(verifier domain.ChecksumVerifier) *ChecksumUseCase {
 }
 
 // Run validates every .CHECKSUM sidecar found under dataPath.
+// Configuration is read from the provided AegisConfig (loaded from YAML).
 // Returns the number of failures.
-func (uc *ChecksumUseCase) Run(dataPath string) int {
-	aegisFetcherCfg, _ := config.LoadAegis()
-
-	if aegisFetcherCfg.Fetcher.SkipChecksumVerification {
-		logger.Warn("Checksum verification is disabled via config — skipping integrity checks")
+func (uc *ChecksumUseCase) Run(dataPath string, cfg *config.AegisConfig) int {
+	if cfg.Fetcher.SkipChecksumVerification {
+		logger.Warn("Checksum verification is disabled via config - skipping integrity checks")
 		return 0
 	}
 
 	failures := uc.verifier.VerifyAllChecksums(dataPath)
 
 	if failures > 0 {
-		logger.Infof("WARN %d checksum failure(s) detected — review errors above", failures)
+		logger.Infof("WARN %d checksum failure(s) detected - review errors above", failures)
 	} else {
 		logger.Info("All checksums passed")
 	}
