@@ -12,7 +12,7 @@ import (
 )
 
 // TimeRange optionally restricts historical playback to [From, To] (unix ms).
-// Zero values mean no bound.
+// Zero values mean no bound. Ignored when session.Mode == "realtime".
 type TimeRange struct {
 	From int64
 	To   int64
@@ -20,14 +20,12 @@ type TimeRange struct {
 
 // StartSession starts the session: launches attached component binaries,
 // waits for them to complete the handshake, then starts the orchestrator.
-// On any failure after SetToStarting, the session is rolled back to INITIALIZED
-// so the caller can retry without creating a new session.
+// On any failure after SetToStarting the session is rolled back to INITIALIZED.
 func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *nats.Conn, tr TimeRange) error {
 	if err := session.SetToStarting(); err != nil {
 		return err
 	}
 
-	// rollback resets the session to INITIALIZED so start can be retried.
 	rollback := func(cause error) error {
 		session.ForceState(core.SessionInitialized)
 		return cause
@@ -43,7 +41,6 @@ func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *na
 	if registered > expected {
 		expected = registered
 	}
-	
 	if expected > 0 {
 		logger.Infof("Session %s: waiting up to %s for %d component(s) to be ready",
 			session.ID, ComponentReadyTimeout, expected)
@@ -55,6 +52,8 @@ func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *na
 		return session.SetToRunning()
 	}
 
+	logger.Infof("Session %s: mode=%s", session.ID, session.Mode)
+
 	ds := orchestrator.NewDataStreamServer(session, nc)
 	if err := ds.Start(context.Background()); err != nil {
 		return rollback(fmt.Errorf("session %s: data stream server: %w", session.ID, err))
@@ -65,6 +64,7 @@ func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *na
 		Topics:    *session.Topics,
 		NC:        nc,
 		DS:        ds,
+		Mode:      session.Mode,
 		FromTS:    tr.From,
 		ToTS:      tr.To,
 	})
@@ -73,8 +73,9 @@ func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *na
 		return rollback(fmt.Errorf("session %s: orchestrator: %w", session.ID, err))
 	}
 
+	// OnFinished is only meaningful in historical mode.
 	o.OnFinished = func() {
-		logger.Infof("Session %s: all data exhausted — transitioning to finished", session.ID)
+		logger.Infof("Session %s: all data exhausted - transitioning to finished", session.ID)
 		if err := session.SetToStopping(); err != nil {
 			logger.Errorf("Session %s: SetToStopping: %s", session.ID, err.Error())
 			return

@@ -7,42 +7,55 @@ import (
 	"sync"
 
 	"github.com/eichiarakaki/aegis/internals/config"
-
 	"github.com/nats-io/nats.go"
 )
 
 // Config holds everything the Orchestrator needs to start.
+// Mode is read directly from core.Session.Mode ("realtime" | "historical").
 type Config struct {
 	SessionID string
-	Topics    []string // component topic strings, e.g. ["klines.BTCUSDT.1m", "trades.BTCUSDT"]
-	DataRoot  string   // AEGIS_DATA_ROOT
+	Topics    []string
+	DataRoot  string // used only when Mode == "historical"
 	NC        *nats.Conn
-	DS        *DataStreamServer // if non-nil, Publish delivers with backpressure (historical mode)
+	DS        *DataStreamServer // Unix socket delivery to components
 
-	// Optional time range for historical filtering (unix milliseconds, inclusive).
-	// Zero means no bound.
+	// Mode mirrors core.Session.Mode: "realtime" or "historical".
+	// Any value other than "realtime" is treated as historical.
+	Mode string
+
+	// Historical time range (unix ms, inclusive). Ignored when Mode == "realtime".
 	FromTS int64
 	ToTS   int64
 }
 
-// Orchestrator fans out one SymbolMerger per unique symbol found in Topics,
-// wires them to a GlobalClock, and drives the tick loop.
+func (c Config) isRealtime() bool { return c.Mode == "realtime" }
+
+// Orchestrator fans out one SymbolMerger per unique symbol (historical), or
+// starts a WSManager that publishes all rows immediately (realtime).
+//
+// In realtime mode there is no GlobalClock. Every message received from
+// Binance is published the instant it arrives via the DataStreamServer
+// (same Unix socket path as historical — components connect identically).
+// The only difference from historical is the absence of backpressure:
+// Deliver() is called from the WSManager goroutine without waiting for a
+// clock barrier, so a slow component will not stall the WebSocket reader.
 type Orchestrator struct {
 	cfg    Config
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
-	// OnFinished is called when all data sources are exhausted.
-	OnFinished func()
+	wsManager *WSManager // non-nil in realtime mode
 
-	// OnError is called if the clock or a merger returns a fatal error.
+	// OnFinished is called when all CSV sources are exhausted (historical only).
+	OnFinished func()
+	// OnError is called on a fatal clock or merger error (historical only).
 	OnError func(err error)
 }
 
-// New creates an Orchestrator. OnFinished and OnError can be set after New
-// and before Start.
+// New creates an Orchestrator. OnFinished and OnError can be set between
+// New and Start.
 func New(cfg Config) (*Orchestrator, error) {
-	if cfg.DataRoot == "" {
+	if !cfg.isRealtime() && cfg.DataRoot == "" {
 		dataRoot, err := dataRootFromEnv()
 		if err != nil {
 			return nil, err
@@ -52,19 +65,109 @@ func New(cfg Config) (*Orchestrator, error) {
 	return &Orchestrator{cfg: cfg}, nil
 }
 
-// Start builds the source graph, wires the GlobalClock, and launches all
-// goroutines. It returns immediately after the goroutines are running.
+// Start builds sources and launches goroutines. Returns immediately.
 func (o *Orchestrator) Start(ctx context.Context) error {
-	resolver := NewFileResolverWithRange(o.cfg.DataRoot, o.cfg.FromTS, o.cfg.ToTS)
+	runCtx, cancel := context.WithCancel(ctx)
+	o.cancel = cancel
+
+	if o.cfg.isRealtime() {
+		return o.startRealtime(runCtx)
+	}
+	return o.startHistorical(runCtx)
+}
+
+// Stop cancels all goroutines, stops the WSManager, and waits for clean exit.
+func (o *Orchestrator) Stop() {
+	if o.cancel != nil {
+		o.cancel()
+	}
+	if o.wsManager != nil {
+		o.wsManager.Stop()
+	}
+	o.wg.Wait()
+}
+
+// ── realtime ─────────────────────────────────────────────────────────────────
+
+func (o *Orchestrator) startRealtime(ctx context.Context) error {
+	// Use DS so rows reach components via the Unix socket, exactly like
+	// historical mode. The difference is that Deliver() is called directly
+	// from the WSManager goroutine — no clock barrier, no backpressure.
 	pub := NewPublisher(o.cfg.NC, o.cfg.DS)
 
-	symbolSources, err := o.buildSources(resolver)
+	subs, err := o.buildRealtimeSubs(pub)
+	if err != nil {
+		return err
+	}
+	if len(subs) == 0 {
+		return fmt.Errorf("orchestrator realtime: no streamable topics for session %s", o.cfg.SessionID)
+	}
+
+	mgr := NewWSManager(o.cfg.SessionID, subs)
+	mgr.Start(ctx)
+	o.wsManager = mgr
+
+	return nil
+}
+
+func (o *Orchestrator) buildRealtimeSubs(pub *Publisher) ([]wsSubscription, error) {
+	var subs []wsSubscription
+
+	for _, rawTopic := range o.cfg.Topics {
+		tp, err := ParseTopic(rawTopic)
+		if err != nil {
+			return nil, fmt.Errorf("topic %q: %w", rawTopic, err)
+		}
+
+		if tp.DataType == "bookDepth" {
+			return nil, fmt.Errorf(
+				"topic %q: \"bookDepth\" is not available in realtime mode — "+
+					"use \"orderBook\" for live order book data", rawTopic,
+			)
+		}
+
+		_, priority, err := DataTypeInfo(tp.DataType)
+		if err != nil {
+			return nil, fmt.Errorf("topic %q: %w", rawTopic, err)
+		}
+
+		parseFn, err := WSParserFor(tp.DataType)
+		if err != nil {
+			// Data type has no WS stream (e.g. "metrics") — skip gracefully.
+			continue
+		}
+
+		stream, err := streamName(tp.DataType, tp.Symbol, tp.Timeframe)
+		if err != nil {
+			return nil, fmt.Errorf("topic %q: %w", rawTopic, err)
+		}
+
+		subs = append(subs, wsSubscription{
+			streamName: stream,
+			dataType:   tp.DataType,
+			priority:   priority,
+			natsTopic:  NATSTopic(o.cfg.SessionID, tp),
+			parseFn:    parseFn,
+			pub:        pub,
+			sessionID:  o.cfg.SessionID,
+		})
+	}
+
+	return subs, nil
+}
+
+// ── historical ───────────────────────────────────────────────────────────────
+
+func (o *Orchestrator) startHistorical(ctx context.Context) error {
+	pub := NewPublisher(o.cfg.NC, o.cfg.DS)
+	resolver := NewFileResolverWithRange(o.cfg.DataRoot, o.cfg.FromTS, o.cfg.ToTS)
+
+	symbolSources, err := o.buildHistoricalSources(resolver)
 	if err != nil {
 		return fmt.Errorf("orchestrator: build sources: %w", err)
 	}
-
 	if len(symbolSources) == 0 {
-		return fmt.Errorf("orchestrator: no valid data sources found for session %s", o.cfg.SessionID)
+		return fmt.Errorf("orchestrator: no valid data sources for session %s", o.cfg.SessionID)
 	}
 
 	symbols := make([]string, 0, len(symbolSources))
@@ -73,37 +176,26 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 	}
 
 	gc := newGlobalClock(len(symbols))
-
-	mergers := make([]*SymbolMerger, len(symbols))
 	for i, sym := range symbols {
-		mergers[i] = newSymbolMerger(i, sym, o.cfg.SessionID, symbolSources[sym], pub, gc)
-	}
-
-	runCtx, cancel := context.WithCancel(ctx)
-	o.cancel = cancel
-
-	for _, m := range mergers {
-		m := m
+		m := newSymbolMerger(i, sym, o.cfg.SessionID, symbolSources[sym], pub, gc)
 		o.wg.Add(1)
-		go func() {
+		go func(m *SymbolMerger) {
 			defer o.wg.Done()
-			m.Run(runCtx)
-		}()
+			m.Run(ctx)
+		}(m)
 	}
 
 	o.wg.Add(1)
 	go func() {
 		defer o.wg.Done()
-		err := gc.Run(runCtx)
-		cancel()
-
+		err := gc.Run(ctx)
+		o.cancel()
 		if err != nil && err != context.Canceled {
 			if o.OnError != nil {
 				o.OnError(err)
 			}
 			return
 		}
-
 		if o.OnFinished != nil {
 			o.OnFinished()
 		}
@@ -112,16 +204,7 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 	return nil
 }
 
-// Stop cancels the orchestrator and waits for all goroutines to exit.
-func (o *Orchestrator) Stop() {
-	if o.cancel != nil {
-		o.cancel()
-	}
-	o.wg.Wait()
-}
-
-// buildSources parses all topics, resolves files, and groups DataSources by symbol.
-func (o *Orchestrator) buildSources(resolver *FileResolver) (map[string][]DataSource, error) {
+func (o *Orchestrator) buildHistoricalSources(resolver *FileResolver) (map[string][]DataSource, error) {
 	symbolSources := make(map[string][]DataSource)
 
 	for _, rawTopic := range o.cfg.Topics {
@@ -134,24 +217,28 @@ func (o *Orchestrator) buildSources(resolver *FileResolver) (map[string][]DataSo
 		if err != nil {
 			return nil, fmt.Errorf("topic %q: %w", rawTopic, err)
 		}
+		if parseFn == nil {
+			return nil, fmt.Errorf(
+				"topic %q: data type %q has no CSV representation and cannot be used in historical mode",
+				rawTopic, tp.DataType,
+			)
+		}
 
 		files, err := resolver.Resolve(tp)
 		if err != nil {
-			_ = fmt.Sprintf("orchestrator: topic %q: %v (skipped)", rawTopic, err)
-			continue
+			continue // non-fatal: skip topics with no matching files
 		}
 
 		natsTopic := NATSTopic(o.cfg.SessionID, tp)
 		src := NewCSVDataSourceWithRange(natsTopic, tp.DataType, priority, parseFn, files, o.cfg.FromTS, o.cfg.ToTS)
-
 		symbolSources[tp.Symbol] = append(symbolSources[tp.Symbol], src)
 	}
 
 	return symbolSources, nil
 }
 
-// dataRootFromEnv reads AEGIS_DATA_ROOT from the environment,
-// falling back to the value in aegis.yaml.
+// ── helpers ───────────────────────────────────────────────────────────────────
+
 func dataRootFromEnv() (string, error) {
 	if v := os.Getenv("AEGIS_DATA_ROOT"); v != "" {
 		return v, nil
