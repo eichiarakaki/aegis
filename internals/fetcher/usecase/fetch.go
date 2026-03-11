@@ -25,31 +25,20 @@ func NewFetchUseCase(lister domain.ObjectLister, downloader domain.FileDownloade
 	return &FetchUseCase{lister: lister, downloader: downloader}
 }
 
-// Run lists all objects for every symbol/dataType/interval combination,
-// then downloads them concurrently using a worker pool.
-// Only files whose embedded date falls within [StartDate, EndDate] are downloaded.
+// Run lists all objects for every symbol/dataType/interval combination derived
+// from the CLI arguments, then downloads them concurrently using a worker pool.
+// Only files whose embedded date falls within dateRange are downloaded.
+// intervals is only used when dataTypes contains "klines"; it is ignored otherwise.
 // Returns the total number of files queued.
-func (uc *FetchUseCase) Run(dataPath string) int {
-	cfg, _ := config.LoadAegis()
-
-	if !cfg.Fetcher.Download.Enable {
-		logger.Info("Download disabled in config — skipping download phase")
-		return 0
-	}
-
-	// Parse date range from config strings ("2024-01-21" format)
-	dateRange, err := parseDateRange(cfg.Fetcher.Download.StartDate, cfg.Fetcher.Download.EndDate)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "[ERR] invalid date range in config: %v\n", err)
-		return 0
-	}
-
-	logger.Infof("Date range: %s → %s",
-		dateRange.Start.Format("2006-01-02"),
-		dateRange.End.Format("2006-01-02"),
-	)
-
-	prefixes := buildPrefixes(dataPath, cfg)
+func (uc *FetchUseCase) Run(
+	dataPath string,
+	symbols []string,
+	dataTypes []string,
+	intervals []string,
+	dateRange domain.DateRange,
+	cfg *config.AegisConfig,
+) int {
+	prefixes := buildPrefixes(dataPath, symbols, dataTypes, intervals)
 	jobs := make(chan domain.Job, 1000)
 
 	var wg sync.WaitGroup
@@ -86,29 +75,14 @@ func (uc *FetchUseCase) Run(dataPath string) int {
 	return totalFiles
 }
 
-// parseDateRange parses two "2006-01-02" strings into a domain.DateRange.
-func parseDateRange(start, end string) (domain.DateRange, error) {
-	const layout = "2006-01-02"
-
-	s, err := time.Parse(layout, start)
-	if err != nil {
-		return domain.DateRange{}, fmt.Errorf("parsing StartDate %q: %w", start, err)
-	}
-
-	e, err := time.Parse(layout, end)
-	if err != nil {
-		return domain.DateRange{}, fmt.Errorf("parsing EndDate %q: %w", end, err)
-	}
-
-	if e.Before(s) {
-		return domain.DateRange{}, fmt.Errorf("EndDate %q is before StartDate %q", end, start)
-	}
-
-	return domain.DateRange{Start: s, End: e}, nil
-}
-
 // worker consumes jobs from the channel, calling the downloader for each one.
-func (uc *FetchUseCase) worker(id int, jobs <-chan domain.Job, wg *sync.WaitGroup, overwriteDownloadedFiles bool, dateRange domain.DateRange) {
+func (uc *FetchUseCase) worker(
+	id int,
+	jobs <-chan domain.Job,
+	wg *sync.WaitGroup,
+	overwriteDownloadedFiles bool,
+	dateRange domain.DateRange,
+) {
 	defer wg.Done()
 	for j := range jobs {
 		if err := uc.downloader.DownloadFile(j.Key, j.DestDir, overwriteDownloadedFiles, dateRange); err != nil {
@@ -131,24 +105,32 @@ func filterKeys(keys []string) []string {
 }
 
 // buildPrefixes constructs all (S3 prefix, local destination) pairs for every
-// combination of symbol, data type, and kline interval (where applicable).
-func buildPrefixes(dataPath string, cfg *config.AegisConfig) []domain.Prefix {
+// combination of symbol, data type, and interval (where applicable).
+// All values come from the CLI — no config defaults are applied here.
+func buildPrefixes(
+	dataPath string,
+	symbols []string,
+	dataTypes []string,
+	intervals []string,
+) []domain.Prefix {
 	var prefixes []domain.Prefix
 
-	for _, sym := range cfg.Fetcher.Cryptocurrencies {
-		for _, dt := range sym.DataTypes {
-			switch dt {
+	for _, sym := range symbols {
+		symUpper := strings.ToUpper(sym)
+		for _, dt := range dataTypes {
+			switch strings.ToLower(dt) {
 			case "klines":
-				for _, interval := range sym.Intervals {
+				// intervals is guaranteed non-empty by CLI validation when klines is requested.
+				for _, interval := range intervals {
 					prefixes = append(prefixes, domain.Prefix{
-						S3Prefix: fmt.Sprintf("%s%s/%s/%s/", basePrefix, dt, sym.Symbol, interval),
-						DestDir:  fmt.Sprintf("%s/%s/%s/%s", dataPath, sym.Symbol, dt, interval),
+						S3Prefix: fmt.Sprintf("%s%s/%s/%s/", basePrefix, dt, symUpper, interval),
+						DestDir:  fmt.Sprintf("%s/%s/%s/%s", dataPath, symUpper, dt, interval),
 					})
 				}
 			default:
 				prefixes = append(prefixes, domain.Prefix{
-					S3Prefix: fmt.Sprintf("%s%s/%s/", basePrefix, dt, sym.Symbol),
-					DestDir:  fmt.Sprintf("%s/%s/%s", dataPath, sym.Symbol, dt),
+					S3Prefix: fmt.Sprintf("%s%s/%s/", basePrefix, dt, symUpper),
+					DestDir:  fmt.Sprintf("%s/%s/%s", dataPath, symUpper, dt),
 				})
 			}
 		}
