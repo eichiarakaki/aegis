@@ -18,11 +18,8 @@ type Cryptocurrency struct {
 }
 
 type Download struct {
-	Enable                   bool   `yaml:"enable"`
-	StartDate                string `yaml:"start_date"`
-	EndDate                  string `yaml:"end_date"`
-	MaxConcurrentDownloads   int    `yaml:"max_concurrent_downloads"`
-	OverwriteDownloadedFiles bool   `yaml:"overwrite_downloaded_files"`
+	MaxConcurrentDownloads   int  `yaml:"max_concurrent_downloads"`
+	OverwriteDownloadedFiles bool `yaml:"overwrite_downloaded_files"`
 }
 
 type Extraction struct {
@@ -62,9 +59,6 @@ func DefaultAegisConfig() *AegisConfig {
 				OverwriteExtractedFiles: false,
 			},
 			Download: Download{
-				Enable:                   true,
-				StartDate:                "2023-01-01",
-				EndDate:                  "2023-02-01",
 				MaxConcurrentDownloads:   5,
 				OverwriteDownloadedFiles: false,
 			},
@@ -112,7 +106,7 @@ func LoadGlobals() (*AegisConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	if cfg.ComponentsSocket == "" {
 		return nil, fmt.Errorf("aegis.yaml: components_socket is required")
 	}
@@ -171,20 +165,6 @@ func (c *AegisConfig) validate() error {
 	}
 
 	f := c.Fetcher
-	if f.Download.Enable {
-		if f.Download.StartDate == "" {
-			errs = append(errs, "fetcher.download.start_date is required when download is enabled")
-		}
-		if f.Download.EndDate == "" {
-			errs = append(errs, "fetcher.download.end_date is required when download is enabled")
-		}
-		if f.Download.MaxConcurrentDownloads <= 0 {
-			errs = append(errs, "fetcher.download.max_concurrent_downloads must be greater than 0")
-		}
-		if len(f.Cryptocurrencies) == 0 {
-			errs = append(errs, "fetcher.cryptocurrencies must have at least one entry when download is enabled")
-		}
-	}
 
 	for i, crypto := range f.Cryptocurrencies {
 		if crypto.Symbol == "" {

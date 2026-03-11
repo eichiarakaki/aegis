@@ -50,7 +50,7 @@ func (d *CDNDownloader) DownloadFile(key, destDir string, overwrite bool, dateRa
 	fileDate, err := extractDate(filename)
 	if err != nil {
 		// If we cannot parse a date (e.g. CHECKSUM files with no date), let it through
-		logger.Infof("WARN no date found in %s — downloading anyway", filename)
+		logger.Infof("WARN no date found in %s - downloading anyway", filename)
 	} else if !withinRange(fileDate, dateRange) {
 		logger.Infof("SKIP (out of range) %s", filename)
 		return nil
