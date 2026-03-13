@@ -57,6 +57,16 @@ func RestartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *
 		return session.SetToRunning()
 	}
 
+	topics := *session.Topics
+
+	// Validate that every topic is supported by the session mode before
+	// starting any goroutines. Surfaces a clear error to the user instead of
+	// silently dropping streams (e.g. "orderBook" in historical mode).
+	if err := orchestrator.ValidateTopicsForMode(topics, session.Mode); err != nil {
+		session.ForceState(core.SessionInitialized)
+		return fmt.Errorf("restart: topic validation: %w", err)
+	}
+
 	// Fresh data stream server for the new run.
 	ds := orchestrator.NewDataStreamServer(session, nc)
 	if err := ds.Start(context.Background()); err != nil {
@@ -66,9 +76,10 @@ func RestartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *
 
 	o, err := orchestrator.New(orchestrator.Config{
 		SessionID: session.ID,
-		Topics:    *session.Topics,
+		Topics:    topics,
 		NC:        nc,
 		DS:        ds,
+		Mode:      session.Mode,
 		FromTS:    tr.From,
 		ToTS:      tr.To,
 	})

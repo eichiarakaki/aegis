@@ -30,6 +30,53 @@ type Config struct {
 
 func (c Config) isRealtime() bool { return c.Mode == "realtime" }
 
+// ValidateTopicsForMode checks that every topic in the list is supported by
+// the given mode. Returns a descriptive error on the first invalid topic so
+// the caller can surface it to the user before any goroutines are started.
+//
+// Rules:
+//   - "historical": only types with a CSV parser are valid (parserRegistry).
+//     Realtime-only types such as "orderBook" are not available.
+//   - "realtime":   only types with a WebSocket parser are valid (wsParserRegistry).
+//     CSV-only types such as "bookDepth" and "metrics" are not available.
+//   - Unknown data types are rejected in both modes.
+func ValidateTopicsForMode(topics []string, mode string) error {
+	for _, rawTopic := range topics {
+		tp, err := ParseTopic(rawTopic)
+		if err != nil {
+			return fmt.Errorf("invalid topic %q: %w", rawTopic, err)
+		}
+
+		parseFn, _, infoErr := DataTypeInfo(tp.DataType)
+
+		if mode == "realtime" {
+			if infoErr != nil {
+				return fmt.Errorf("topic %q: unknown data type %q", rawTopic, tp.DataType)
+			}
+			if _, hasWS := wsParserRegistry[tp.DataType]; !hasWS {
+				return fmt.Errorf(
+					"topic %q: data type %q is not available in realtime mode"+
+						" (no WebSocket stream — valid types: klines, aggTrades, trades, orderBook)",
+					rawTopic, tp.DataType,
+				)
+			}
+		} else {
+			// historical
+			if infoErr != nil {
+				return fmt.Errorf("topic %q: unknown data type %q", rawTopic, tp.DataType)
+			}
+			if parseFn == nil {
+				return fmt.Errorf(
+					"topic %q: data type %q is not available in historical mode"+
+						" (no CSV representation — valid types: klines, aggTrades, trades, bookDepth, metrics)",
+					rawTopic, tp.DataType,
+				)
+			}
+		}
+	}
+	return nil
+}
+
 // Orchestrator fans out one SymbolMerger per unique symbol (historical), or
 // starts a WSManager that publishes all rows immediately (realtime).
 //
@@ -218,10 +265,9 @@ func (o *Orchestrator) buildHistoricalSources(resolver *FileResolver) (map[strin
 			return nil, fmt.Errorf("topic %q: %w", rawTopic, err)
 		}
 		if parseFn == nil {
-			return nil, fmt.Errorf(
-				"topic %q: data type %q has no CSV representation and cannot be used in historical mode",
-				rawTopic, tp.DataType,
-			)
+			// Realtime-only type — ValidateTopicsForMode rejects these before
+			// we ever get here in normal operation. Skip defensively.
+			continue
 		}
 
 		files, err := resolver.Resolve(tp)

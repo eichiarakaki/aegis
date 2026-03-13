@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/eichiarakaki/aegis/internals/core"
 	"github.com/eichiarakaki/aegis/internals/logger"
@@ -41,10 +42,15 @@ func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *na
 	if registered > expected {
 		expected = registered
 	}
+
 	if expected > 0 {
 		logger.Infof("Session %s: waiting up to %s for %d component(s) to be ready",
 			session.ID, ComponentReadyTimeout, expected)
 		waitForComponents(session, expected, ComponentReadyTimeout)
+
+		logger.Infof("Session %s: waiting for all components to complete CONFIGURE handshake",
+			session.ID)
+		waitForConfigured(session, expected, ComponentReadyTimeout)
 	}
 
 	if session.Topics == nil || len(*session.Topics) == 0 {
@@ -52,7 +58,15 @@ func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *na
 		return session.SetToRunning()
 	}
 
-	logger.Infof("Session %s: mode=%s", session.ID, session.Mode)
+	topics := *session.Topics
+	logger.Infof("Session %s: mode=%s topics=%v", session.ID, session.Mode, topics)
+
+	// Validate that every topic is supported by the session mode before
+	// starting any goroutines. Surfaces a clear error to the user instead of
+	// silently dropping streams (e.g. "orderBook" in historical mode).
+	if err := orchestrator.ValidateTopicsForMode(topics, session.Mode); err != nil {
+		return rollback(fmt.Errorf("session %s: topic validation: %w", session.ID, err))
+	}
 
 	ds := orchestrator.NewDataStreamServer(session, nc)
 	if err := ds.Start(context.Background()); err != nil {
@@ -61,7 +75,7 @@ func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *na
 
 	o, err := orchestrator.New(orchestrator.Config{
 		SessionID: session.ID,
-		Topics:    *session.Topics,
+		Topics:    topics,
 		NC:        nc,
 		DS:        ds,
 		Mode:      session.Mode,
@@ -73,7 +87,6 @@ func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *na
 		return rollback(fmt.Errorf("session %s: orchestrator: %w", session.ID, err))
 	}
 
-	// OnFinished is only meaningful in historical mode.
 	o.OnFinished = func() {
 		logger.Infof("Session %s: all data exhausted - transitioning to finished", session.ID)
 		if err := session.SetToStopping(); err != nil {
@@ -104,4 +117,33 @@ func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *na
 	}
 
 	return session.SetToRunning()
+}
+
+// waitForConfigured polls until all expected components reach Configured state
+// (meaning they have completed the full CONFIGURE handshake and their topics
+// are registered in session.Topics), or until the timeout expires.
+func waitForConfigured(session *core.Session, expected int, timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		configured := 0
+		for _, comp := range session.Registry.List() {
+			if comp.State == core.ComponentStateConfigured ||
+				comp.State == core.ComponentStateRunning {
+				configured++
+			}
+		}
+		if configured >= expected {
+			logger.Infof("Session %s: %d/%d component(s) configured", session.ID, configured, expected)
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	logger.Warnf("Session %s: timed out waiting for components to configure — "+
+		"proceeding with %d topic(s): %v",
+		session.ID, func() int {
+			if session.Topics == nil {
+				return 0
+			}
+			return len(*session.Topics)
+		}(), session.Topics)
 }

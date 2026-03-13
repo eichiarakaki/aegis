@@ -1,0 +1,22 @@
+Purpose of Aegis Daemon Real-Time Data Stream for Tools (Aegist)
+========================================
+
+This is a daemon from the Aegis ecosystem, used to
+provide real-time data in a NON-PROCEDURAL manner to
+quantitative TOOLS.
+
+
+-----
+
+What's the difference between a tool and a regular Component?
+-------------------------------------------------------------
+
+A component or set of components in a session are 
+instruments that need to be synchronized and maintain a 
+sequential data flow. You can't suddenly rewind the 
+Global Clock to analyze better a moment. On the other 
+hand, a quantitative tool can make many requests for 
+different time periods, useful for flexible tools that 
+require time periods instead of purely sequential data,
+y lo mas importante: los datos serán persistentes hasta
+que el usuario los requiera

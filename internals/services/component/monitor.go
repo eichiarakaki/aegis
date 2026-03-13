@@ -49,13 +49,22 @@ func (m *HeartbeatMonitor) checkComponents() {
 		}
 
 		for _, comp := range session.Registry.List() {
-			// Skip components that haven't completed the handshake yet.
-			// INIT      = placeholder registered during attach, process not started.
-			// REGISTERED = process connected but still in WaitForReady.
-			// Heartbeating these would always fail and cause spurious cleanup.
-			if comp.State == core.ComponentStateInit ||
-				comp.State == core.ComponentStateRegistered ||
-				comp.State == core.ComponentStateInitializing {
+			// Skip all states that are part of the handshake sequence or that
+			// haven't started communicating yet. Only RUNNING and WAITING are
+			// steady-state and should be heartbeat-monitored.
+			//
+			// FIX: previously only INIT/REGISTERED/INITIALIZING were skipped.
+			// READY and CONFIGURED are also transient handshake states — the
+			// component reaches them before it enters the steady-state lifecycle
+			// loop. More importantly, LastHeartbeat is zero-valued at creation
+			// so time.Since(LastHeartbeat) >> timeout and the monitor killed the
+			// component immediately after it finished the handshake.
+			switch comp.State {
+			case core.ComponentStateInit,
+				core.ComponentStateRegistered,
+				core.ComponentStateInitializing,
+				core.ComponentStateReady,
+				core.ComponentStateConfigured:
 				continue
 			}
 
@@ -105,21 +114,10 @@ func (m *HeartbeatMonitor) handleDeadComponent(
 	comp *core.Component,
 	log *logger.Logger,
 ) {
-	// 1. Transition component state to ERROR
 	if err := registry.UpdateState(comp.ID, core.ComponentStateError); err != nil {
 		log.Errorf("Failed to transition component to ERROR state: %s", err.Error())
 	}
 
-	// 2. Notify the parent session so it can stop gracefully
-	// if session, exists := m.sessionStore.GetSessionByID(comp.SessionID); exists {
-	// 	if err := session.SetToStopping(); err != nil {
-	// 		log.Warnf("Failed to stop parent session %s: %s", session.ID, err.Error())
-	// 	} else {
-	// 		log.Warnf("Parent session %s transitioned to STOPPED due to dead component", session.ID)
-	// 	}
-	// }
-
-	// 3. Close the active connection
 	if conn, exists := m.pool.Get(comp.ID); exists {
 		if err := conn.Close(); err != nil {
 			log.Errorf("Failed to close connection for dead component: %s", err.Error())
@@ -127,7 +125,6 @@ func (m *HeartbeatMonitor) handleDeadComponent(
 		m.pool.Remove(comp.ID)
 	}
 
-	// 4. Unregister from the session's registry
 	if err := registry.Unregister(comp.ID); err != nil {
 		log.Errorf("Failed to unregister dead component: %s", err.Error())
 	}

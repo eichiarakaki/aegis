@@ -1,0 +1,23 @@
+
+
+
+
+Main Goal
+---------
+
+Since it will be designed for tools that the trader will use to make trading decisions in real time, it must be a system with clear priorities so that data is sent to the tools in nanoseconds.
+
+    1. Sacrifice complexity for performance.
+    2. Sacrifice space for performance.
+    3. Sacrifice mental health for performance.
+
+
+-----
+
+
+Features
+--------
+
+* GraphQL server
+* Websocket for realtime data streaming
+* Soporte para multiples herramientas 
