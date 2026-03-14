@@ -33,9 +33,6 @@ func InitDaemon() {
 	monitor := servicescomponent.NewComponentHeartbeatMonitor(sessionStore, pool)
 	go monitor.Start()
 
-	// LogStore keeps the last 500 lines per component for backlog replay.
-	logStore := servicescomponent.NewLogStore(500)
-
 	for _, socket := range []string{aegisSocket, componentsSocket} {
 		if err := os.RemoveAll(socket); err != nil {
 			logger.Error("Failed to remove stale socket:", socket, err)
@@ -89,7 +86,7 @@ func InitDaemon() {
 				logger.Error("CLI connection error:", err)
 				continue
 			}
-			go HandleAegis(conn, sessionStore, nc, logStore, pool)
+			go HandleAegis(conn, sessionStore, nc, pool)
 		}
 	}()
 

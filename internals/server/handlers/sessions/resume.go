@@ -6,7 +6,6 @@ import (
 
 	"github.com/eichiarakaki/aegis/internals/core"
 	"github.com/eichiarakaki/aegis/internals/logger"
-	servicescomponent "github.com/eichiarakaki/aegis/internals/services/component"
 	"github.com/eichiarakaki/aegis/internals/services/sessions"
 	"github.com/eichiarakaki/aegis/internals/services/utils"
 	"github.com/nats-io/nats.go"
@@ -16,7 +15,7 @@ import (
 // Resume differs from restart: it is only valid from STOPPED (not FINISHED),
 // and does not accept a new time range — it continues from where it left off.
 // The state machine already allows STOPPED → STARTING.
-func HandleSessionResume(cmd core.Command, conn net.Conn, sessionStore *core.SessionStore, nc *nats.Conn, logStore *servicescomponent.LogStore) {
+func HandleSessionResume(cmd core.Command, conn net.Conn, sessionStore *core.SessionStore, nc *nats.Conn) {
 	payload, err := core.DeserializeSessionActionPayload(cmd)
 	if err != nil {
 		core.WriteJSON(conn, core.Response{

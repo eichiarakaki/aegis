@@ -18,7 +18,7 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
-func HandleAegis(conn net.Conn, sessionStore *core.SessionStore, nc *nats.Conn, logStore *servicescomponent.LogStore, pool *servicescomponent.ConnectionPool) {
+func HandleAegis(conn net.Conn, sessionStore *core.SessionStore, nc *nats.Conn, pool *servicescomponent.ConnectionPool) {
 	defer func(conn net.Conn) {
 		if err := conn.Close(); err != nil {
 			logger.Error(err)
@@ -50,7 +50,7 @@ func HandleAegis(conn net.Conn, sessionStore *core.SessionStore, nc *nats.Conn, 
 		sessions.HandleSessionAttach(cmd, conn, sessionStore)
 
 	case core.CommandSessionStart:
-		sessions.HandleSessionStart(cmd, conn, sessionStore, nc, logStore)
+		sessions.HandleSessionStart(cmd, conn, sessionStore, nc)
 
 	case core.CommandSessionStop:
 		sessions.HandleSessionStop(cmd, conn, sessionStore)
@@ -65,10 +65,10 @@ func HandleAegis(conn net.Conn, sessionStore *core.SessionStore, nc *nats.Conn, 
 		sessions.HandleSessionDelete(cmd, conn, sessionStore, pool)
 
 	case core.CommandSessionRestart:
-		sessions.HandleSessionRestart(cmd, conn, sessionStore, nc, logStore)
+		sessions.HandleSessionRestart(cmd, conn, sessionStore, nc)
 
 	case core.CommandSessionResume:
-		sessions.HandleSessionResume(cmd, conn, sessionStore, nc, logStore)
+		sessions.HandleSessionResume(cmd, conn, sessionStore, nc)
 
 	// -- Component inspection --------------------------------------
 
@@ -80,9 +80,6 @@ func HandleAegis(conn net.Conn, sessionStore *core.SessionStore, nc *nats.Conn, 
 
 	case core.CommandComponentDescribe:
 		component.HandleComponentDescribe(cmd, conn, sessionStore)
-
-	case core.CommandComponentLogs:
-		component.HandleComponentLogs(cmd, conn, sessionStore, nc, logStore)
 
 	case core.CommandComponentLogPath:
 		component.HandleComponentLogPath(cmd, conn, sessionStore)

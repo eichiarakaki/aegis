@@ -6,14 +6,13 @@ import (
 
 	"github.com/eichiarakaki/aegis/internals/core"
 	"github.com/eichiarakaki/aegis/internals/logger"
-	servicescomponent "github.com/eichiarakaki/aegis/internals/services/component"
 	"github.com/eichiarakaki/aegis/internals/services/sessions"
 	"github.com/eichiarakaki/aegis/internals/services/utils"
 	"github.com/nats-io/nats.go"
 )
 
 // HandleSessionRestart restarts a FINISHED session without relaunching component processes.
-func HandleSessionRestart(cmd core.Command, conn net.Conn, sessionStore *core.SessionStore, nc *nats.Conn, logStore *servicescomponent.LogStore) {
+func HandleSessionRestart(cmd core.Command, conn net.Conn, sessionStore *core.SessionStore, nc *nats.Conn) {
 	payload, err := core.DeserializeSessionStartPayload(cmd)
 	if err != nil {
 		core.WriteJSON(conn, core.Response{
