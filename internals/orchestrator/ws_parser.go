@@ -8,17 +8,8 @@ import (
 	"github.com/eichiarakaki/aegis/internals/orchestrator/schema"
 )
 
-// WSParseFunc parses a raw Binance WebSocket JSON payload (the "data" field of
-// a combined-stream message) into a (timestamp unix ms, JSON payload) pair.
-// The payload must use the same schema structs as the CSV parsers so that
-// downstream components receive identical structures regardless of source.
 type WSParseFunc func(msg []byte) (ts int64, payload []byte, err error)
 
-// wsParserRegistry maps data_type → WSParseFunc.
-//
-// "bookDepth" is intentionally absent: it is only available in historical
-// (CSV) mode. Requesting it in realtime returns a clear error at startup.
-// Use "orderBook" for realtime order book data instead.
 var wsParserRegistry = map[string]WSParseFunc{
 	"klines":    parseWSKline,
 	"aggTrades": parseWSAggTrade,
@@ -26,7 +17,6 @@ var wsParserRegistry = map[string]WSParseFunc{
 	"orderBook": parseWSOrderBook,
 }
 
-// WSParserFor returns the WSParseFunc for a given data type.
 func WSParserFor(dataType string) (WSParseFunc, error) {
 	if dataType == "bookDepth" {
 		return nil, fmt.Errorf(
@@ -41,9 +31,6 @@ func WSParserFor(dataType string) (WSParseFunc, error) {
 	return fn, nil
 }
 
-// toFloat64 converts a json.Number to float64.
-// json.Number accepts both JSON strings and JSON numbers, making it robust
-// against Binance's inconsistent serialization across endpoints.
 func toFloat64(n json.Number, field string) (float64, error) {
 	v, err := n.Float64()
 	if err != nil {
@@ -53,37 +40,20 @@ func toFloat64(n json.Number, field string) (float64, error) {
 }
 
 // ── klines ───────────────────────────────────────────────────────────────────
-//
-// Binance kline stream. OHLCV fields vary by endpoint:
-//   - fstream.binance.com (USD-M futures): may be string or number depending
-//     on the server version. Using json.Number handles both transparently.
-//
-// Shape:
-//
-//	{
-//	  "e": "kline", "E": 123456789, "s": "BTCUSDT",
-//	  "k": {
-//	    "t": 123400000,  "T": 123460000,
-//	    "o": "0.001",    "c": "0.002",   "h": "0.003",  "l": "0.001",
-//	    "v": "100",      "n": 100,
-//	    "x": false,
-//	    "q": "1.0",      "V": "50",      "Q": "0.5"
-//	  }
-//	}
 
 type wsKlineEvent struct {
 	K struct {
-		T  int64       `json:"t"` // open time (always a number)
-		CT int64       `json:"T"` // close time (always a number)
+		T  int64       `json:"t"`
+		CT int64       `json:"T"`
 		O  json.Number `json:"o"`
 		H  json.Number `json:"h"`
 		L  json.Number `json:"l"`
 		C  json.Number `json:"c"`
 		V  json.Number `json:"v"`
-		Q  json.Number `json:"q"` // quote volume
-		N  int64       `json:"n"` // trade count (always a number)
-		BV json.Number `json:"V"` // taker buy base volume
-		BQ json.Number `json:"Q"` // taker buy quote volume
+		Q  json.Number `json:"q"`
+		N  int64       `json:"n"`
+		BV json.Number `json:"V"`
+		BQ json.Number `json:"Q"`
 	} `json:"k"`
 }
 
@@ -148,46 +118,110 @@ func parseWSKline(msg []byte) (int64, []byte, error) {
 }
 
 // ── aggTrades ────────────────────────────────────────────────────────────────
-
-type wsAggTradeEvent struct {
-	AggTradeID   int64  `json:"a"`
-	Price        string `json:"p"`
-	Quantity     string `json:"q"`
-	FirstTradeID int64  `json:"f"`
-	LastTradeID  int64  `json:"l"`
-	TransactTime int64  `json:"T"`
-	IsBuyerMaker bool   `json:"m"`
-}
+//
+// We cannot use a struct with tags `json:"e"` and `json:"E"` simultaneously
+// because Go's encoding/json decoder is case-insensitive: it matches
+// "e":"aggTrade" onto the field tagged `json:"E"` (EventTime), producing
+// the error "cannot unmarshal string into Number".
+//
+// Solution: unmarshal into map[string]json.RawMessage for exact case-sensitive
+// key matching, then extract fields manually.
 
 func parseWSAggTrade(msg []byte) (int64, []byte, error) {
-	var ev wsAggTradeEvent
-	if err := json.Unmarshal(msg, &ev); err != nil {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(msg, &raw); err != nil {
 		return 0, nil, fmt.Errorf("ws aggTrade: unmarshal: %w", err)
 	}
 
-	price, err := strconv.ParseFloat(ev.Price, 64)
+	parseInt64 := func(key string) (int64, error) {
+		v, ok := raw[key]
+		if !ok {
+			return 0, nil
+		}
+		var n json.Number
+		if err := json.Unmarshal(v, &n); err != nil {
+			return 0, fmt.Errorf("field %q: %w", key, err)
+		}
+		return n.Int64()
+	}
+
+	parseStr := func(key string) string {
+		v, ok := raw[key]
+		if !ok {
+			return ""
+		}
+		var s string
+		json.Unmarshal(v, &s)
+		return s
+	}
+
+	parseBool := func(key string) bool {
+		v, ok := raw[key]
+		if !ok {
+			return false
+		}
+		var b bool
+		json.Unmarshal(v, &b)
+		return b
+	}
+
+	eventTime, err := parseInt64("E")
+	if err != nil {
+		return 0, nil, fmt.Errorf("ws aggTrade: event_time: %w", err)
+	}
+	aggTradeID, err := parseInt64("a")
+	if err != nil {
+		return 0, nil, fmt.Errorf("ws aggTrade: agg_trade_id: %w", err)
+	}
+	firstTradeID, err := parseInt64("f")
+	if err != nil {
+		return 0, nil, fmt.Errorf("ws aggTrade: first_trade_id: %w", err)
+	}
+	lastTradeID, err := parseInt64("l")
+	if err != nil {
+		return 0, nil, fmt.Errorf("ws aggTrade: last_trade_id: %w", err)
+	}
+	transactTime, err := parseInt64("T")
+	if err != nil {
+		return 0, nil, fmt.Errorf("ws aggTrade: transact_time: %w", err)
+	}
+
+	price, err := strconv.ParseFloat(parseStr("p"), 64)
 	if err != nil {
 		return 0, nil, fmt.Errorf("ws aggTrade: price: %w", err)
 	}
-	qty, err := strconv.ParseFloat(ev.Quantity, 64)
+	qty, err := strconv.ParseFloat(parseStr("q"), 64)
 	if err != nil {
 		return 0, nil, fmt.Errorf("ws aggTrade: quantity: %w", err)
 	}
 
+	var normalQty float64
+	if nqStr := parseStr("nq"); nqStr != "" {
+		normalQty, err = strconv.ParseFloat(nqStr, 64)
+		if err != nil {
+			return 0, nil, fmt.Errorf("ws aggTrade: normal_qty: %w", err)
+		}
+	} else {
+		normalQty = qty
+	}
+
 	out := schema.AggTrade{
-		AggTradeID:   ev.AggTradeID,
+		EventTime:    eventTime,
+		Symbol:       parseStr("s"),
+		AggTradeID:   aggTradeID,
 		Price:        price,
 		Quantity:     qty,
-		FirstTradeID: ev.FirstTradeID,
-		LastTradeID:  ev.LastTradeID,
-		TransactTime: ev.TransactTime,
-		IsBuyerMaker: ev.IsBuyerMaker,
+		NormalQty:    normalQty,
+		FirstTradeID: firstTradeID,
+		LastTradeID:  lastTradeID,
+		TransactTime: transactTime,
+		IsBuyerMaker: parseBool("m"),
 	}
 	payload, err := json.Marshal(out)
 	if err != nil {
 		return 0, nil, fmt.Errorf("ws aggTrade: marshal: %w", err)
 	}
-	return ev.TransactTime, payload, nil
+	return transactTime, payload, nil
 }
 
 // ── trades ───────────────────────────────────────────────────────────────────

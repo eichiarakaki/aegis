@@ -126,12 +126,13 @@ func HandleComponentConnection(conn net.Conn, sessionStore *core.SessionStore, p
 		default:
 			// Case C: pre-assigned ID but no entry - register fresh
 			comp = &core.Component{
-				ID:           componentID,
-				Name:         registerPayload.ComponentName,
-				Version:      registerPayload.Version,
-				SessionID:    session.ID,
-				State:        core.ComponentStateRegistered,
-				Capabilities: registerPayload.Capabilities,
+				ID:            componentID,
+				Name:          registerPayload.ComponentName,
+				Version:       registerPayload.Version,
+				SessionID:     session.ID,
+				State:         core.ComponentStateRegistered,
+				Capabilities:  registerPayload.Capabilities,
+				LastHeartbeat: time.Now(),
 			}
 			if err := registry.Register(comp); err != nil {
 				logging.Errorf("Failed to register component: %s", err)
@@ -145,12 +146,13 @@ func HandleComponentConnection(conn net.Conn, sessionStore *core.SessionStore, p
 		componentID = utils.GenerateComponentID()
 		logging.Debugf("No component_id in REGISTER - generated: %s", componentID)
 		comp = &core.Component{
-			ID:           componentID,
-			Name:         registerPayload.ComponentName,
-			Version:      registerPayload.Version,
-			SessionID:    session.ID,
-			State:        core.ComponentStateRegistered,
-			Capabilities: registerPayload.Capabilities,
+			ID:            componentID,
+			Name:          registerPayload.ComponentName,
+			Version:       registerPayload.Version,
+			SessionID:     session.ID,
+			State:         core.ComponentStateRegistered,
+			Capabilities:  registerPayload.Capabilities,
+			LastHeartbeat: time.Now(),
 		}
 		if err := registry.Register(comp); err != nil {
 			logging.Errorf("Failed to register component: %s", err)
@@ -216,6 +218,19 @@ func HandleComponentConnection(conn net.Conn, sessionStore *core.SessionStore, p
 		_ = registry.Unregister(componentID)
 		return
 	}
+
+	// STEP 7b: Drain STATE_UPDATE(Configured) + STATE_UPDATE(Running)
+	//
+	// The Rust SDK sends these immediately after the ACK (see handle_config in
+	// component.rs). We must read and apply them here — before the steady-state
+	// loop — so that waitForComponents() can observe the Running state and
+	// unblock StartSession in time for the Orchestrator to receive the full
+	// topic list.
+	if err := drainPostConfigStateUpdates(conn, dec, registry, componentID, logging); err != nil {
+		logging.Warnf("Post-config state drain warning: %s", err)
+		// Non-fatal: continue to steady-state loop; state may just be stale.
+	}
+
 	logging.Infof("Configuration acknowledged - handing off to lifecycle loop")
 
 	// STEP 8: Steady-state lifecycle loop
@@ -372,4 +387,85 @@ func sendErrorResponse(conn net.Conn, correlationID, code core.ErrorCode, messag
 	if err := json.NewEncoder(conn).Encode(errorEnvelope); err != nil {
 		logger.Errorf("Failed to send error response: %s", err)
 	}
+}
+
+// drainPostConfigStateUpdates reads the STATE_UPDATE(Configured) and
+// STATE_UPDATE(Running) messages that the component sends immediately after
+// ACKing CONFIGURE, and applies them to the registry.
+//
+// Background: the Rust SDK's handle_config() sends, in order:
+//  1. Control/ACK  ← consumed by WaitForConfigACK
+//  2. Lifecycle/STATE_UPDATE(Configured)
+//  3. Lifecycle/STATE_UPDATE(Running)
+//
+// These arrive before the steady-state loop starts. If we don't read them
+// here they stay in the socket buffer and waitForComponents() times out
+// before the loop ever processes them, causing StartSession to snapshot an
+// empty session.Topics and start the Orchestrator with no streams.
+func drainPostConfigStateUpdates(
+	conn net.Conn,
+	dec *json.Decoder,
+	registry *core.Registry,
+	componentID string,
+	log *logger.Logger,
+) error {
+	expected := []core.ForeignComponentState{
+		core.ComponentStateConfigured,
+		core.ComponentStateRunning,
+	}
+
+	if err := conn.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		return err
+	}
+	defer conn.SetReadDeadline(time.Time{})
+
+	for _, want := range expected {
+		var envelope core.Envelope
+		if err := dec.Decode(&envelope); err != nil {
+			return fmt.Errorf("reading STATE_UPDATE(%s): %w", want, err)
+		}
+
+		// The component may interleave an ACK for our earlier STATE_UPDATE
+		// ACKs — skip Control messages silently.
+		if envelope.Type == core.MessageTypeControl {
+			log.Debugf("drainPostConfig: skipping Control/%s", envelope.Command)
+			// Re-attempt the same expected state.
+			var envelope2 core.Envelope
+			if err := dec.Decode(&envelope2); err != nil {
+				return fmt.Errorf("reading STATE_UPDATE(%s) after control skip: %w", want, err)
+			}
+			envelope = envelope2
+		}
+
+		if envelope.Type != core.MessageTypeLifecycle || envelope.Command != core.CommandStateUpdate {
+			log.Warnf("drainPostConfig: unexpected message type=%s command=%s (wanted STATE_UPDATE(%s))",
+				envelope.Type, envelope.Command, want)
+			continue
+		}
+
+		var payload core.StateUpdatePayload
+		payloadJSON, _ := json.Marshal(envelope.Payload)
+		if err := json.Unmarshal(payloadJSON, &payload); err != nil {
+			return fmt.Errorf("parse STATE_UPDATE payload: %w", err)
+		}
+
+		if err := registry.UpdateState(componentID, payload.State); err != nil {
+			log.Warnf("drainPostConfig: UpdateState(%s): %v", payload.State, err)
+		} else {
+			log.Infof("Component transitioned to %s", payload.State)
+
+			// so the monitor doesn't see a stale zero-value and kill it immediately.
+			if payload.State == core.ComponentStateRunning {
+				_ = registry.RefreshHeartbeat(componentID)
+			}
+		}
+
+		// ACK the state update so the component doesn't stall.
+		ack, _ := ACKResponse(envelope.MessageID)
+		if err := json.NewEncoder(conn).Encode(ack); err != nil {
+			return fmt.Errorf("send ACK for STATE_UPDATE(%s): %w", want, err)
+		}
+	}
+
+	return nil
 }

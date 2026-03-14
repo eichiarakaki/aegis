@@ -31,15 +31,18 @@ type DataStreamHandshakeResponse struct {
 type subscriber struct {
 	componentID string
 	topics      map[string]struct{} // full NATS topic strings
-	ch          chan []byte         // blocking — orchestrator waits on this
+	ch          chan []byte
+	// realtime=true  → ch is buffered; Deliver() is non-blocking (drop on full).
+	// realtime=false → ch is unbuffered; Deliver() blocks for backpressure.
+	realtime bool
 }
+
+// realtimeSubscriberBufSize is the number of messages that can be queued per
+// subscriber before Deliver() starts dropping for a slow realtime component.
+const realtimeSubscriberBufSize = 512
 
 // DataStreamServer listens on a Unix socket and delivers NATS messages
 // to connected components, filtered by each component's declared topics.
-//
-// In historical mode the orchestrator calls Deliver() synchronously —
-// it blocks until every subscriber interested in that topic has received
-// the message, providing natural backpressure that prevents data loss.
 type DataStreamServer struct {
 	session    *core.Session
 	nc         *nats.Conn
@@ -48,6 +51,8 @@ type DataStreamServer struct {
 	cancel     context.CancelFunc
 	wg         sync.WaitGroup
 	log        *logger.Logger
+
+	realtime bool
 
 	subsMu sync.RWMutex
 	subs   []*subscriber
@@ -61,6 +66,7 @@ func NewDataStreamServer(session *core.Session, nc *nats.Conn) *DataStreamServer
 		nc:         nc,
 		socketPath: socketPath,
 		log:        logger.WithComponent("DataStream").WithField("session_id", session.ID),
+		realtime:   session.Mode == "realtime",
 	}
 }
 
@@ -101,19 +107,27 @@ func (s *DataStreamServer) Stop() {
 }
 
 // Deliver sends data to every subscriber interested in natsTopic.
-// It blocks until all interested subscribers have received the message —
-// this is the backpressure mechanism that keeps the orchestrator in sync
-// with the slowest component.
 func (s *DataStreamServer) Deliver(natsTopic string, data []byte) {
 	s.subsMu.RLock()
 	defer s.subsMu.RUnlock()
+
+	s.log.Debugf("Deliver: topic=%s subscribers=%d", natsTopic, len(s.subs))
 
 	for _, sub := range s.subs {
 		if _, ok := sub.topics[natsTopic]; !ok {
 			continue
 		}
-		// Block until the subscriber's write loop accepts the message.
-		sub.ch <- data
+
+		if sub.realtime {
+			select {
+			case sub.ch <- data:
+			default:
+				s.log.Warnf("Deliver: subscriber %s is too slow, dropping message for %s",
+					sub.componentID, natsTopic)
+			}
+		} else {
+			sub.ch <- data
+		}
 	}
 }
 
@@ -144,7 +158,16 @@ func (s *DataStreamServer) handleConn(ctx context.Context, conn net.Conn) {
 	log := s.log.WithField("remote_addr", conn.RemoteAddr().String())
 	log.Debugf("Component connected to data stream")
 
-	dec := json.NewDecoder(bufio.NewReader(conn))
+	// Use a single bufio.Reader for the entire connection lifetime.
+	// IMPORTANT: json.NewDecoder internally buffers reads — if we created a
+	// new bufio.Reader just for the handshake and discarded it, bytes already
+	// read into the decoder's internal buffer would be lost. By creating one
+	// shared reader here and passing it to json.NewDecoder, any bytes the
+	// decoder reads beyond the handshake JSON remain buffered in this reader
+	// and are available for subsequent reads (none are expected from the
+	// client after handshake, but this prevents accidental data loss).
+	connReader := bufio.NewReader(conn)
+	dec := json.NewDecoder(connReader)
 	enc := json.NewEncoder(conn)
 
 	// --- Handshake ---
@@ -179,12 +202,18 @@ func (s *DataStreamServer) handleConn(ctx context.Context, conn net.Conn) {
 		topicSet[t] = struct{}{}
 	}
 
-	// Channel is unbuffered — Deliver() blocks until the write loop reads.
-	// This is what provides backpressure to the orchestrator.
+	var ch chan []byte
+	if s.realtime {
+		ch = make(chan []byte, realtimeSubscriberBufSize)
+	} else {
+		ch = make(chan []byte)
+	}
+
 	sub := &subscriber{
 		componentID: hs.ComponentID,
 		topics:      topicSet,
-		ch:          make(chan []byte),
+		ch:          ch,
+		realtime:    s.realtime,
 	}
 
 	s.subsMu.Lock()
@@ -193,6 +222,8 @@ func (s *DataStreamServer) handleConn(ctx context.Context, conn net.Conn) {
 
 	defer s.removeSub(sub)
 
+	// Send handshake response via json.NewEncoder on the raw conn (not the
+	// bufio.Reader — that is read-only). enc was created on conn directly.
 	if err := enc.Encode(DataStreamHandshakeResponse{Status: "ok", Topics: componentTopics}); err != nil {
 		log.Warnf("Failed to send handshake response: %v", err)
 		return
@@ -200,7 +231,9 @@ func (s *DataStreamServer) handleConn(ctx context.Context, conn net.Conn) {
 
 	log.Infof("Handshake OK — component=%s topics=%v", hs.ComponentID, componentTopics)
 
-	// --- Write loop: forward messages to socket as JSON Lines ---
+	// --- Write loop: forward messages to socket as newline-delimited JSON ---
+	// Use a fresh bufio.Writer for outbound data — independent of the inbound
+	// connReader above.
 	connCtx, connCancel := context.WithCancel(ctx)
 	defer connCancel()
 

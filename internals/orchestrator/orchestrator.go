@@ -23,12 +23,73 @@ type Config struct {
 	// Any value other than "realtime" is treated as historical.
 	Mode string
 
+	// Market selects the Binance WebSocket endpoint for realtime mode.
+	// Use MarketSpot, MarketFutures, or MarketCoinM. Defaults to MarketSpot.
+	Market Market
+
 	// Historical time range (unix ms, inclusive). Ignored when Mode == "realtime".
 	FromTS int64
 	ToTS   int64
 }
 
 func (c Config) isRealtime() bool { return c.Mode == "realtime" }
+
+// ValidateTopicsForMode checks that every topic in the list is supported by
+// the given mode. Returns a descriptive error on the first invalid topic so
+// the caller can surface it to the user before any goroutines are started.
+//
+// Rules:
+//   - "historical": only types with a CSV parser are valid (parserRegistry).
+//     Realtime-only types such as "orderBook" are not available.
+//   - "realtime":   only types with a WebSocket parser are valid (wsParserRegistry).
+//     CSV-only types such as "bookDepth" and "metrics" are not available.
+//   - Unknown data types are rejected in both modes.
+func ValidateTopicsForMode(topics []string, mode string) error {
+	for _, rawTopic := range topics {
+		tp, err := ParseTopic(rawTopic)
+		if err != nil {
+			return fmt.Errorf("invalid topic %q: %w", rawTopic, err)
+		}
+
+		parseFn, _, infoErr := DataTypeInfo(tp.DataType)
+
+		if mode == "realtime" {
+			if infoErr != nil {
+				return fmt.Errorf("topic %q: unknown data type %q", rawTopic, tp.DataType)
+			}
+			if _, hasWS := wsParserRegistry[tp.DataType]; !hasWS {
+				return fmt.Errorf(
+					"topic %q: data type %q is not available in realtime mode"+
+						" (no WebSocket stream — valid types: klines, aggTrades, trades, orderBook)",
+					rawTopic, tp.DataType,
+				)
+			}
+			// Validate orderBook speed when present.
+			if tp.DataType == "orderBook" && tp.Timeframe != "" {
+				validSpeeds := map[string]bool{"100ms": true, "250ms": true, "500ms": true}
+				if !validSpeeds[tp.Timeframe] {
+					return fmt.Errorf(
+						"topic %q: invalid orderBook speed %q (valid: 100ms, 250ms, 500ms)",
+						rawTopic, tp.Timeframe,
+					)
+				}
+			}
+		} else {
+			// historical
+			if infoErr != nil {
+				return fmt.Errorf("topic %q: unknown data type %q", rawTopic, tp.DataType)
+			}
+			if parseFn == nil {
+				return fmt.Errorf(
+					"topic %q: data type %q is not available in historical mode"+
+						" (no CSV representation — valid types: klines, aggTrades, trades, bookDepth, metrics)",
+					rawTopic, tp.DataType,
+				)
+			}
+		}
+	}
+	return nil
+}
 
 // Orchestrator fans out one SymbolMerger per unique symbol (historical), or
 // starts a WSManager that publishes all rows immediately (realtime).
@@ -103,7 +164,7 @@ func (o *Orchestrator) startRealtime(ctx context.Context) error {
 		return fmt.Errorf("orchestrator realtime: no streamable topics for session %s", o.cfg.SessionID)
 	}
 
-	mgr := NewWSManager(o.cfg.SessionID, subs)
+	mgr := NewWSManager(o.cfg.SessionID, o.cfg.Market, subs)
 	mgr.Start(ctx)
 	o.wsManager = mgr
 
@@ -137,7 +198,7 @@ func (o *Orchestrator) buildRealtimeSubs(pub *Publisher) ([]wsSubscription, erro
 			continue
 		}
 
-		stream, err := streamName(tp.DataType, tp.Symbol, tp.Timeframe)
+		stream, err := streamName(tp.DataType, tp.Symbol, tp.Timeframe, o.cfg.Market)
 		if err != nil {
 			return nil, fmt.Errorf("topic %q: %w", rawTopic, err)
 		}
@@ -218,10 +279,9 @@ func (o *Orchestrator) buildHistoricalSources(resolver *FileResolver) (map[strin
 			return nil, fmt.Errorf("topic %q: %w", rawTopic, err)
 		}
 		if parseFn == nil {
-			return nil, fmt.Errorf(
-				"topic %q: data type %q has no CSV representation and cannot be used in historical mode",
-				rawTopic, tp.DataType,
-			)
+			// Realtime-only type — ValidateTopicsForMode rejects these before
+			// we ever get here in normal operation. Skip defensively.
+			continue
 		}
 
 		files, err := resolver.Resolve(tp)

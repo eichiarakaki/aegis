@@ -9,8 +9,6 @@ import (
 	"github.com/eichiarakaki/aegis/internals/orchestrator"
 )
 
-// sessionRuntime holds runtime resources associated with a session
-// that should not live in the core layer to avoid import cycles.
 type sessionRuntime struct {
 	orchestrator *orchestrator.Orchestrator
 	dataStream   *orchestrator.DataStreamServer
@@ -40,9 +38,21 @@ func clearSessionRuntime(sessionID string) {
 	delete(sessionRuntimes, sessionID)
 }
 
-// ComponentReadyTimeout is the time StartSession waits for at least one
-// component to reach CONFIGURED state before starting the orchestrator.
-var ComponentReadyTimeout = 2 * time.Second
+// ComponentReadyTimeout is how long StartSession waits for components to
+// complete the full handshake (REGISTER → READY → CONFIGURE → RUNNING).
+//
+// 15 s gives enough headroom for:
+//   - the OS to schedule the new process
+//   - the Rust tokio runtime to initialise
+//   - the component to connect to the Unix socket and exchange all
+//     handshake messages (REGISTER, STATE_UPDATE ×2, CONFIGURE, ACK,
+//     STATE_UPDATE ×2) before the orchestrator snapshots session.Topics.
+//
+// The previous value of 2 s was too short: if the first connection attempt
+// failed for any reason the Rust SDK's default reconnect_delay (3 s) meant
+// the component could never finish in time, leaving session.Topics empty and
+// the orchestrator starting with no streams.
+var ComponentReadyTimeout = 15 * time.Second
 
 // waitForComponents polls the session registry until at least `expected`
 // components reach CONFIGURED or RUNNING state, or the timeout expires.

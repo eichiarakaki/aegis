@@ -2,10 +2,17 @@
 
 The user creates and starts a session via the Aegis CLI:
 ```bash
-aegis session create <session_name> --mode <mode>
-aegis session attach <session_name|session_id> --path <comp1> --path <comp2>
-aegis session start <session_name|session_id>
+aegisctl session create <session_name> --mode <mode> [--market <market>]
+aegisctl session attach <session_name|session_id> --path <comp1> --path <comp2>
+aegisctl session start <session_name|session_id>
 ```
+
+The `--market` flag selects the Binance WebSocket endpoint for realtime sessions:
+- `spot` (default) → `wss://stream.binance.com:9443`
+- `futures` → `wss://fstream.binance.com` (USD-M perpetual)
+- `coin-m` → `wss://dstream.binance.com` (COIN-M perpetual)
+
+The market is fixed at session creation and has no effect in historical mode.
 
 The daemon launches each attached component binary with the following
 environment variables injected:
@@ -52,13 +59,24 @@ Aegis     → ACK
     "component_name": "data_engine",
     "version": "0.1.0",
     "capabilities": {
-      "supported_symbols":    ["BTCUSDT", "ETHUSDT"],
-      "supported_timeframes": ["1m", "15m", "1h"],
-      "requires_streams":     ["klines", "orderbook"]
+      "supported_symbols":          ["BTCUSDT", "ETHUSDT"],
+      "supported_timeframes":       ["1m", "15m", "1h"],
+      "supported_orderbook_speeds": ["100ms"],
+      "requires_streams":           ["klines", "aggTrades", "orderBook"]
     }
   }
 }
 ```
+
+Notes on `capabilities`:
+- `requires_streams` contains stream **names only** — no symbols, timeframes, or speeds.
+  Valid values: `klines`, `aggTrades`, `trades`, `orderBook`, `bookDepth`, `metrics`.
+- `supported_orderbook_speeds` is only used when `requires_streams` contains `"orderBook"`.
+  Valid values: `"100ms"`, `"250ms"`, `"500ms"`. Defaults to `"100ms"` if omitted.
+- The server (BuildTopics) combines these fields to derive full topic strings:
+  - `"klines"` + `["BTCUSDT"]` + `["1m","5m"]` → `klines.BTCUSDT.1m`, `klines.BTCUSDT.5m`
+  - `"orderBook"` + `["BTCUSDT"]` + speeds `["100ms"]` → `orderBook.BTCUSDT.100ms`
+  - `"aggTrades"` + `["BTCUSDT"]` → `aggTrades.BTCUSDT`
 
 **REGISTERED** — Aegis confirms registration:
 ```json
@@ -104,7 +122,7 @@ assigned to this component:
   "command": "CONFIGURE",
   "payload": {
     "data_stream_socket": "/tmp/aegis-data-stream-sess-xyz.sock",
-    "topics": ["klines.BTCUSDT.1m", "orderbook.BTCUSDT"]
+    "topics": ["klines.BTCUSDT.1m", "aggTrades.BTCUSDT", "orderBook.BTCUSDT.100ms"]
   }
 }
 ```
@@ -146,26 +164,42 @@ Component → PONG
 #### Data stream  (`/tmp/aegis-data-stream-<session_id>.sock`)
 
 A separate Unix socket used exclusively for market data. The component
-connects to it **after** receiving CONFIGURE and performs a one-time
-handshake before data starts flowing:
+connects to it **after** receiving CONFIGURE, using the `component_id` and
+`session_id` received in the REGISTERED response:
+
 ```
 Component → {"component_id": "cmp-abc123", "session_token": "sess-xyz"}
-Server    → {"status": "ok", "topics": ["klines.BTCUSDT.1m", ...]}
+Server    → {"status": "ok", "topics": ["aegis.sess-xyz.klines.BTCUSDT.1m", ...]}
 ```
 
 After the handshake the server streams newline-delimited JSON frames:
 ```json
-{"topic": "klines.BTCUSDT.1m", "data": { ... }}
+{
+  "session_id": "sess-xyz",
+  "topic":      "aegis.sess-xyz.aggTrades.BTCUSDT",
+  "ts":         1773455666591,
+  "data":       { ... }
+}
 ```
 
-The stream is unidirectional — the component only reads after the handshake.
+Notes:
+- `topic` is the full NATS topic: `aegis.<session_id>.<data_type>.<symbol>[.<timeframe>]`
+- `ts` is always unix ms regardless of data type
+- `data` schema depends on `data_type` — see DATA_TYPES.md
+
+The stream is unidirectional after the handshake — the component only reads.
 If the socket closes, the component reconnects and re-handshakes.
+
+**Important for libaegis users:** the `component_id` and `session_id` to use
+for the data stream handshake are the values received in REGISTERED, not env
+vars. The `on_running(component_id, session_id, shutdown)` callback receives
+them directly from the SDK.
 
 ---
 
 #### Session restart  (REBORN)
 
-When a finished session is restarted (`aegis session start` on a FINISHED
+When a finished session is restarted (`aegisctl session start` on a FINISHED
 session), Aegis sends REBORN instead of going through the full lifecycle
 again. The component clears its internal state and ACKs — no reconnect or
 new CONFIGURE is needed. The data stream socket is recreated by the server
