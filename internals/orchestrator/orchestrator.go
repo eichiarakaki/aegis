@@ -23,6 +23,10 @@ type Config struct {
 	// Any value other than "realtime" is treated as historical.
 	Mode string
 
+	// Market selects the Binance WebSocket endpoint for realtime mode.
+	// Use MarketSpot, MarketFutures, or MarketCoinM. Defaults to MarketSpot.
+	Market Market
+
 	// Historical time range (unix ms, inclusive). Ignored when Mode == "realtime".
 	FromTS int64
 	ToTS   int64
@@ -59,6 +63,16 @@ func ValidateTopicsForMode(topics []string, mode string) error {
 						" (no WebSocket stream — valid types: klines, aggTrades, trades, orderBook)",
 					rawTopic, tp.DataType,
 				)
+			}
+			// Validate orderBook speed when present.
+			if tp.DataType == "orderBook" && tp.Timeframe != "" {
+				validSpeeds := map[string]bool{"100ms": true, "250ms": true, "500ms": true}
+				if !validSpeeds[tp.Timeframe] {
+					return fmt.Errorf(
+						"topic %q: invalid orderBook speed %q (valid: 100ms, 250ms, 500ms)",
+						rawTopic, tp.Timeframe,
+					)
+				}
 			}
 		} else {
 			// historical
@@ -150,7 +164,7 @@ func (o *Orchestrator) startRealtime(ctx context.Context) error {
 		return fmt.Errorf("orchestrator realtime: no streamable topics for session %s", o.cfg.SessionID)
 	}
 
-	mgr := NewWSManager(o.cfg.SessionID, subs)
+	mgr := NewWSManager(o.cfg.SessionID, o.cfg.Market, subs)
 	mgr.Start(ctx)
 	o.wsManager = mgr
 
@@ -184,7 +198,7 @@ func (o *Orchestrator) buildRealtimeSubs(pub *Publisher) ([]wsSubscription, erro
 			continue
 		}
 
-		stream, err := streamName(tp.DataType, tp.Symbol, tp.Timeframe)
+		stream, err := streamName(tp.DataType, tp.Symbol, tp.Timeframe, o.cfg.Market)
 		if err != nil {
 			return nil, fmt.Errorf("topic %q: %w", rawTopic, err)
 		}

@@ -46,9 +46,10 @@ type RegisterPayload struct {
 
 // ComponentCapabilities describes what the component can do
 type ComponentCapabilities struct {
-	SupportedSymbols    []string `json:"supported_symbols"`
-	SupportedTimeframes []string `json:"supported_timeframes"`
-	RequiresStreams     []string `json:"requires_streams"`
+	SupportedSymbols         []string `json:"supported_symbols"`
+	SupportedTimeframes      []string `json:"supported_timeframes"`
+	SupportedOrderBookSpeeds []string `json:"supported_orderbook_speeds"`
+	RequiresStreams          []string `json:"requires_streams"`
 }
 
 // RegisteredPayload is the REGISTER response

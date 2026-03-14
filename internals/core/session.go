@@ -10,9 +10,11 @@ import (
 )
 
 type Session struct {
-	ID       string
-	Name     string
-	Mode     string // realtime | historical
+	ID     string
+	Name   string
+	Mode   string // realtime | historical
+	Market string // "spot" | "futures" | "coin-m", defaults to "spot"
+
 	State    SessionStateType
 	Registry *Registry
 
@@ -41,11 +43,12 @@ type ComponentPathEntry struct {
 }
 
 // NewSession creates a new session with the given name and mode.
-func NewSession(id string, name string, mode string) *Session {
+func NewSession(id string, name string, mode string, market string) *Session {
 	return &Session{
 		ID:               id,
 		Name:             name,
 		Mode:             mode,
+		Market:           market, // "spot" | "futures" | "coin-m", defaults to "spot"
 		State:            SessionInitialized,
 		Registry:         NewComponentRegistry(),
 		StreamSocket:     nil,

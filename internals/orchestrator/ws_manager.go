@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -14,15 +13,38 @@ import (
 )
 
 const (
-	binanceWSBaseURL    = "wss://fstream.binance.com"
+	binanceWSSpot    = "wss://stream.binance.com:9443"
+	binanceWSFutures = "wss://fstream.binance.com"
+	binanceWSCoinM   = "wss://dstream.binance.com"
+
 	wsReconnectDelay    = 3 * time.Second
 	wsMaxReconnectDelay = 60 * time.Second
 	wsPingInterval      = 20 * time.Second
 	wsReadTimeout       = 60 * time.Second
 )
 
+// Market identifies which Binance market a session targets.
+type Market string
+
+const (
+	MarketSpot    Market = "spot"
+	MarketFutures Market = "futures" // USD-M perpetual
+	MarketCoinM   Market = "coin-m"  // COIN-M perpetual
+)
+
+func wsBaseURL(market Market) string {
+	switch market {
+	case MarketFutures:
+		return binanceWSFutures
+	case MarketCoinM:
+		return binanceWSCoinM
+	default:
+		return binanceWSSpot
+	}
+}
+
 // streamName returns the Binance WebSocket stream name for a given topic.
-func streamName(dataType, symbol, timeframe string) (string, error) {
+func streamName(dataType, symbol, timeframe string, market Market) (string, error) {
 	sym := strings.ToLower(symbol)
 	switch dataType {
 	case "klines":
@@ -35,15 +57,19 @@ func streamName(dataType, symbol, timeframe string) (string, error) {
 	case "trades":
 		return fmt.Sprintf("%s@trade", sym), nil
 	case "orderBook":
-		return fmt.Sprintf("%s@depth20@100ms", sym), nil
+		speed := timeframe
+		if speed == "" {
+			speed = "100ms"
+		}
+		if speed != "100ms" && speed != "250ms" && speed != "500ms" {
+			return "", fmt.Errorf("ws_manager: invalid orderBook speed %q (valid: 100ms, 250ms, 500ms)", speed)
+		}
+		return fmt.Sprintf("%s@depth20@%s", sym, speed), nil
 	default:
 		return "", fmt.Errorf("ws_manager: no WebSocket stream for data type %q", dataType)
 	}
 }
 
-// wsSubscription represents a single stream-to-publisher binding.
-// All subscriptions in realtime mode are clockless — rows are published
-// immediately without going through a GlobalClock barrier.
 type wsSubscription struct {
 	streamName string
 	dataType   string
@@ -55,26 +81,24 @@ type wsSubscription struct {
 }
 
 // WSManager opens a single Binance combined-stream WebSocket connection and
-// publishes every incoming message directly to NATS via Publisher.
-// There is no clock, no buffer, and no ordering guarantee between streams —
-// rows are delivered as fast as Binance sends them.
+// publishes every incoming message directly via Publisher.
 type WSManager struct {
 	sessionID string
+	market    Market
 	subs      []wsSubscription
 	log       *logger.Logger
 	wg        sync.WaitGroup
 }
 
-// NewWSManager creates a WSManager for the given subscriptions.
-func NewWSManager(sessionID string, subs []wsSubscription) *WSManager {
+func NewWSManager(sessionID string, market Market, subs []wsSubscription) *WSManager {
 	return &WSManager{
 		sessionID: sessionID,
+		market:    market,
 		subs:      subs,
 		log:       logger.WithComponent("WSManager").WithField("session_id", sessionID),
 	}
 }
 
-// Start launches the connection loop in a background goroutine.
 func (m *WSManager) Start(ctx context.Context) {
 	m.wg.Add(1)
 	go func() {
@@ -83,7 +107,6 @@ func (m *WSManager) Start(ctx context.Context) {
 	}()
 }
 
-// Stop waits for the connection goroutine to exit.
 func (m *WSManager) Stop() {
 	m.wg.Wait()
 }
@@ -96,7 +119,6 @@ func (m *WSManager) connectLoop(ctx context.Context) {
 			return
 		default:
 		}
-
 		if err := m.connect(ctx); err != nil {
 			if ctx.Err() != nil {
 				return
@@ -119,9 +141,11 @@ func (m *WSManager) connect(ctx context.Context) error {
 	for i, sub := range m.subs {
 		names[i] = sub.streamName
 	}
-	u := fmt.Sprintf("%s/stream?streams=%s", binanceWSBaseURL, url.QueryEscape(strings.Join(names, "/")))
 
-	m.log.Infof("Connecting to %s", u)
+	baseURL := wsBaseURL(m.market)
+	u := fmt.Sprintf("%s/stream?streams=%s", baseURL, strings.Join(names, "/"))
+
+	m.log.Infof("Connecting to %s (market=%s)", u, m.market)
 
 	conn, _, err := websocket.DefaultDialer.DialContext(ctx, u, nil)
 	if err != nil {
@@ -136,6 +160,18 @@ func (m *WSManager) connect(ctx context.Context) error {
 		lookup[m.subs[i].streamName] = &m.subs[i]
 	}
 
+	var writeMu sync.Mutex
+	safeWrite := func(msgType int, data []byte) error {
+		writeMu.Lock()
+		defer writeMu.Unlock()
+		return conn.WriteMessage(msgType, data)
+	}
+
+	conn.SetPingHandler(func(appData string) error {
+		m.log.Debugf("Received server ping — sending pong")
+		return safeWrite(websocket.PongMessage, []byte(appData))
+	})
+
 	pingCtx, cancelPing := context.WithCancel(ctx)
 	defer cancelPing()
 	go func() {
@@ -146,7 +182,10 @@ func (m *WSManager) connect(ctx context.Context) error {
 			case <-pingCtx.Done():
 				return
 			case <-ticker.C:
-				_ = conn.WriteMessage(websocket.PingMessage, nil)
+				if err := safeWrite(websocket.PongMessage, nil); err != nil {
+					m.log.Warnf("Keepalive pong failed: %v", err)
+					return
+				}
 			}
 		}
 	}()
@@ -167,19 +206,22 @@ func (m *WSManager) connect(ctx context.Context) error {
 	}
 }
 
-// combinedStreamWrapper is the envelope Binance uses for combined streams.
 type combinedStreamWrapper struct {
 	Stream string          `json:"stream"`
 	Data   json.RawMessage `json:"data"`
 }
 
-// dispatch parses a combined-stream message and publishes it immediately.
 func (m *WSManager) dispatch(lookup map[string]*wsSubscription, raw []byte) {
+	// DEBUG: confirm messages are arriving from Binance
+	m.log.Debugf("dispatch: raw message received (%d bytes): %.200s", len(raw), string(raw))
+
 	var wrapper combinedStreamWrapper
 	if err := json.Unmarshal(raw, &wrapper); err != nil {
 		m.log.Warnf("Failed to unwrap combined message: %v", err)
 		return
 	}
+
+	m.log.Debugf("dispatch: stream=%q", wrapper.Stream)
 
 	sub := lookup[wrapper.Stream]
 	if sub == nil {
@@ -191,15 +233,24 @@ func (m *WSManager) dispatch(lookup map[string]*wsSubscription, raw []byte) {
 		}
 	}
 	if sub == nil {
-		m.log.Warnf("No subscription for stream %q", wrapper.Stream)
+		m.log.Warnf("No subscription for stream %q (known: %v)", wrapper.Stream, func() []string {
+			keys := make([]string, 0, len(lookup))
+			for k := range lookup {
+				keys = append(keys, k)
+			}
+			return keys
+		}())
 		return
 	}
 
 	ts, payload, err := sub.parseFn(wrapper.Data)
 	if err != nil {
-		m.log.Warnf("Parse error for stream %q: %v", wrapper.Stream, err)
+		m.log.Warnf("Parse error for stream %q: %v | data=%.200s", wrapper.Stream, err, string(wrapper.Data))
 		return
 	}
+
+	m.log.Debugf("dispatch: parsed stream=%q ts=%d topic=%s payload_bytes=%d",
+		wrapper.Stream, ts, sub.natsTopic, len(payload))
 
 	row := RawRow{
 		Timestamp: ts,

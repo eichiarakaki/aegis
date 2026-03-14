@@ -95,8 +95,7 @@ func ErrorResponse(correlationID, code, message string, recoverable bool) (*core
 }
 
 // WaitForReady reads STATE_UPDATE(INITIALIZING) then STATE_UPDATE(READY),
-// ACKing each one. Uses the shared decoder to avoid consuming bytes from
-// the connection's internal buffer.
+// ACKing each one.
 func WaitForReady(
 	conn net.Conn,
 	dec *json.Decoder,
@@ -169,7 +168,7 @@ func WaitForReady(
 	return nil
 }
 
-// WaitForConfigACK reads the ACK for the CONFIGURE message using the shared decoder.
+// WaitForConfigACK reads the ACK for the CONFIGURE message.
 func WaitForConfigACK(
 	conn net.Conn,
 	dec *json.Decoder,
@@ -212,24 +211,66 @@ func WaitForConfigACK(
 	return nil
 }
 
-func BuildTopics(caps core.ComponentCapabilities) []string {
-	timeframeStreams := map[string]bool{
-		"klines": true,
-	}
+// validOrderBookSpeeds is the set of update intervals Binance supports for
+// the partial-depth stream. Used for validation and URL construction.
+var validOrderBookSpeeds = map[string]bool{
+	"100ms": true,
+	"250ms": true,
+	"500ms": true,
+}
 
+// defaultOrderBookSpeed is used when a component requests "orderBook" but
+// does not declare any SupportedOrderBookSpeeds.
+const defaultOrderBookSpeed = "100ms"
+
+// BuildTopics derives the list of session topics from a component's
+// capabilities. Each topic has the format:
+//
+//	<stream>.<symbol>              (e.g. "aggTrades.BTCUSDT")
+//	<stream>.<symbol>.<timeframe>  (e.g. "klines.BTCUSDT.1m")
+//	<stream>.<symbol>.<speed>      (e.g. "orderBook.BTCUSDT.100ms")
+//
+// Rules per stream type:
+//   - klines    → one topic per (symbol, timeframe) pair
+//   - orderBook → one topic per (symbol, speed) pair; speeds come from
+//     SupportedOrderBookSpeeds; defaults to "100ms" if empty
+//   - all others → one topic per symbol (no sub-parameter)
+func BuildTopics(caps core.ComponentCapabilities) []string {
 	var topics []string
+
 	for _, stream := range caps.RequiresStreams {
-		if timeframeStreams[stream] {
+		switch stream {
+		case "klines":
 			for _, symbol := range caps.SupportedSymbols {
 				for _, tf := range caps.SupportedTimeframes {
 					topics = append(topics, stream+"."+symbol+"."+tf)
 				}
 			}
-		} else {
+
+		case "orderBook":
+			speeds := caps.SupportedOrderBookSpeeds
+			// Validate and filter to only known speeds.
+			var filtered []string
+			for _, s := range speeds {
+				if validOrderBookSpeeds[s] {
+					filtered = append(filtered, s)
+				}
+			}
+			if len(filtered) == 0 {
+				filtered = []string{defaultOrderBookSpeed}
+			}
+			for _, symbol := range caps.SupportedSymbols {
+				for _, speed := range filtered {
+					topics = append(topics, stream+"."+symbol+"."+speed)
+				}
+			}
+
+		default:
 			for _, symbol := range caps.SupportedSymbols {
 				topics = append(topics, stream+"."+symbol)
 			}
 		}
 	}
+
 	return topics
 }

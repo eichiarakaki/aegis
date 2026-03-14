@@ -59,11 +59,8 @@ func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *na
 	}
 
 	topics := *session.Topics
-	logger.Infof("Session %s: mode=%s topics=%v", session.ID, session.Mode, topics)
+	logger.Infof("Session %s: mode=%s market=%s topics=%v", session.ID, session.Mode, session.Market, topics)
 
-	// Validate that every topic is supported by the session mode before
-	// starting any goroutines. Surfaces a clear error to the user instead of
-	// silently dropping streams (e.g. "orderBook" in historical mode).
 	if err := orchestrator.ValidateTopicsForMode(topics, session.Mode); err != nil {
 		return rollback(fmt.Errorf("session %s: topic validation: %w", session.ID, err))
 	}
@@ -79,6 +76,7 @@ func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *na
 		NC:        nc,
 		DS:        ds,
 		Mode:      session.Mode,
+		Market:    orchestrator.Market(session.Market),
 		FromTS:    tr.From,
 		ToTS:      tr.To,
 	})
@@ -119,9 +117,6 @@ func StartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *na
 	return session.SetToRunning()
 }
 
-// waitForConfigured polls until all expected components reach Configured state
-// (meaning they have completed the full CONFIGURE handshake and their topics
-// are registered in session.Topics), or until the timeout expires.
 func waitForConfigured(session *core.Session, expected int, timeout time.Duration) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {

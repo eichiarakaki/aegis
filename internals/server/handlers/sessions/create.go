@@ -22,10 +22,10 @@ func HandleSessionCreate(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 		return
 	}
 
-	logger.WithRequestID(cmd.RequestID).Infof("Creating session: name=%s, mode=%s", payload.Name, payload.Mode)
+	logger.WithRequestID(cmd.RequestID).Infof("Creating session: name=%s, mode=%s, market=%s",
+		payload.Name, payload.Mode, payload.Market)
 
-	// Create the session
-	session, err := sessionCreation(payload.Name, payload.Mode, sessionStore)
+	session, err := sessionCreation(payload.Name, payload.Mode, payload.Market, sessionStore)
 	if err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
@@ -48,6 +48,7 @@ func HandleSessionCreate(cmd core.Command, conn net.Conn, sessionStore *core.Ses
 				"id":         session.ID,
 				"name":       session.Name,
 				"mode":       session.Mode,
+				"market":     session.Market,
 				"state":      session.State,
 				"created_at": session.CreatedAt.String(),
 			},
@@ -68,9 +69,10 @@ func HandleSessionCreateRun(cmd core.Command, conn net.Conn, sessionStore *core.
 		return
 	}
 
-	logger.WithRequestID(cmd.RequestID).Infof("Creating session and spawning components: name=%s, mode=%s, paths=%d", payload.Name, payload.Mode, len(payload.Paths))
+	logger.WithRequestID(cmd.RequestID).Infof("Creating session and spawning components: name=%s, mode=%s, market=%s, paths=%d",
+		payload.Name, payload.Mode, payload.Market, len(payload.Paths))
 
-	session, err := sessionCreation(payload.Name, payload.Mode, sessionStore)
+	session, err := sessionCreation(payload.Name, payload.Mode, payload.Market, sessionStore)
 	if err != nil {
 		core.WriteJSON(conn, core.Response{
 			RequestID: cmd.RequestID,
@@ -81,7 +83,6 @@ func HandleSessionCreateRun(cmd core.Command, conn net.Conn, sessionStore *core.
 		return
 	}
 
-	// Attach components
 	components, err := servicessessions.AttachComponents(session, payload.Paths)
 	if err != nil {
 		logger.WithRequestID(cmd.RequestID).Errorf("Failed to attach components: %s", err.Error())
@@ -97,7 +98,8 @@ func HandleSessionCreateRun(cmd core.Command, conn net.Conn, sessionStore *core.
 		return
 	}
 
-	logger.WithRequestID(cmd.RequestID).Infof("Session created and %d components spawned: %s (%s)", len(components), session.Name, session.ID)
+	logger.WithRequestID(cmd.RequestID).Infof("Session created and %d components spawned: %s (%s)",
+		len(components), session.Name, session.ID)
 
 	core.WriteJSON(conn, core.Response{
 		RequestID: cmd.RequestID,
@@ -105,10 +107,11 @@ func HandleSessionCreateRun(cmd core.Command, conn net.Conn, sessionStore *core.
 		Status:    core.OK,
 		Message:   fmt.Sprintf("Session created and %d components spawned", len(components)),
 		Data: map[string]interface{}{
-			"session": map[string]interface{}{
+			"session": map[string]any{
 				"id":         session.ID,
 				"name":       session.Name,
 				"mode":       session.Mode,
+				"market":     session.Market,
 				"state":      string(session.State),
 				"created_at": session.CreatedAt.String(),
 			},
@@ -117,18 +120,14 @@ func HandleSessionCreateRun(cmd core.Command, conn net.Conn, sessionStore *core.
 	})
 }
 
-func sessionCreation(name string, mode string, sessionStore *core.SessionStore) (*core.Session, error) {
-	// Create the session
-	sessionID, err := servicessessions.CreateSession(name, mode, sessionStore)
+func sessionCreation(name, mode, market string, sessionStore *core.SessionStore) (*core.Session, error) {
+	sessionID, err := servicessessions.CreateSession(name, mode, market, sessionStore)
 	if err != nil {
-
 		return nil, fmt.Errorf("failed to create session: %s", err.Error())
 	}
 
-	// Retrieve the created session
 	session, found := sessionStore.GetSessionByID(sessionID)
 	if !found {
-
 		return nil, fmt.Errorf("session created but could not be retrieved: %s", sessionID)
 	}
 

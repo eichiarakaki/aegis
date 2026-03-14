@@ -80,6 +80,7 @@ func RestartSession(session *core.Session, cmd core.Command, conn net.Conn, nc *
 		NC:        nc,
 		DS:        ds,
 		Mode:      session.Mode,
+		Market:    orchestrator.Market(session.Market),
 		FromTS:    tr.From,
 		ToTS:      tr.To,
 	})

@@ -10,10 +10,11 @@ import (
 )
 
 var (
-	sessionMode  string
-	sessionPaths []string
-	sessionFrom  string
-	sessionTo    string
+	sessionMode   string
+	sessionMarket string
+	sessionPaths  []string
+	sessionFrom   string
+	sessionTo     string
 )
 
 var sessionCmd = &cobra.Command{
@@ -102,9 +103,9 @@ func runSessionCreate(_ *cobra.Command, args []string) {
 	name := args[0]
 	var payload interface{}
 	if len(sessionPaths) == 0 {
-		payload = core.SessionCreatePayload{Name: name, Mode: sessionMode}
+		payload = core.SessionCreatePayload{Name: name, Mode: sessionMode, Market: sessionMarket}
 	} else {
-		payload = core.SessionCreateRunPayload{Name: name, Mode: sessionMode, Paths: sessionPaths}
+		payload = core.SessionCreateRunPayload{Name: name, Mode: sessionMode, Market: sessionMarket, Paths: sessionPaths}
 	}
 	if err := sendCommand(core.CommandSessionCreate, payload); err != nil {
 		log.Fatal(err)
@@ -180,9 +181,6 @@ func runSessionDelete(_ *cobra.Command, args []string) {
 
 // ---- helpers ----------------------------------------------------------------
 
-// parseTimeRange parses --from and --to into unix milliseconds.
-// Accepts RFC3339, YYYY-MM-DD, or plain unix ms integer.
-// Returns 0 for empty strings (no bound).
 func parseTimeRange(from, to string) (int64, int64, error) {
 	fromTS, err := parseTimestamp(from)
 	if err != nil {
@@ -219,6 +217,7 @@ func parseTimestamp(s string) (int64, error) {
 
 func init() {
 	sessionCreateCmd.Flags().StringVar(&sessionMode, "mode", "historical", "Session mode (realtime|historical)")
+	sessionCreateCmd.Flags().StringVar(&sessionMarket, "market", "spot", "Binance market (spot|futures|coin-m)")
 	sessionCreateCmd.Flags().StringArrayVar(&sessionPaths, "path", nil, "Component binary path (repeatable)")
 
 	sessionAttachCmd.Flags().StringArrayVar(&sessionPaths, "path", nil, "Component binary path (repeatable)")

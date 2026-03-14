@@ -14,14 +14,16 @@ type Command struct {
 // Specific payload for each command
 
 type SessionCreatePayload struct {
-	Name string `json:"name"`
-	Mode string `json:"mode"`
+	Name   string `json:"name"`
+	Mode   string `json:"mode"`
+	Market string `json:"market"` // "spot" | "futures" | "coin-m"
 }
 
 type SessionCreateRunPayload struct {
-	Name  string   `json:"name"`
-	Mode  string   `json:"mode"`
-	Paths []string `json:"paths"`
+	Name   string   `json:"name"`
+	Mode   string   `json:"mode"`
+	Market string   `json:"market"` // "spot" | "futures" | "coin-m"
+	Paths  []string `json:"paths"`
 }
 
 type SessionAttachPayload struct {

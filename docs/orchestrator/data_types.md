@@ -30,9 +30,25 @@ In realtime this breaks down for two reasons:
    causes the buffer to fill. Real backpressure is not achievable against an
    external WebSocket.
 
-In realtime mode every message is published to NATS the instant it is parsed.
-Components that need to correlate data types by timestamp must do so
-themselves.
+In realtime mode every message is published to the data stream socket the instant
+it is parsed. Components that need to correlate data types by timestamp must do
+so themselves.
+
+---
+
+## Markets
+
+The `--market` flag at session creation selects the Binance WebSocket endpoint
+and determines which symbols are available.
+
+| Value      | Endpoint                          | Description              |
+|------------|-----------------------------------|--------------------------|
+| `spot`     | `wss://stream.binance.com:9443`   | Spot market (default)    |
+| `futures`  | `wss://fstream.binance.com`       | USD-M perpetual futures  |
+| `coin-m`   | `wss://dstream.binance.com`       | COIN-M perpetual futures |
+
+The market is fixed at session creation and cannot be changed. In historical
+mode the market field is ignored — data is read from CSV files regardless.
 
 ---
 
@@ -66,7 +82,7 @@ Aggregated trades — multiple fills at the same price and time merged into one 
 | **Clock** | GlobalClock | None — clockless |
 | **Timestamp field** | `transact_time` | `transact_time` |
 | **Schema** | `AggTrade` | `AggTrade` (identical) |
-| **Limitations** | — | — |
+| **Historical differences** | `event_time=0`, `symbol=""`, `normal_qty=0` — not present in CSV. Use `transact_time` as canonical timestamp in both modes. | — |
 
 **Topic format:** `aggTrades.<SYMBOL>` — e.g. `aggTrades.BTCUSDT`
 
@@ -109,19 +125,27 @@ Aggregated order book depth snapshots (percentage, depth, notional).
 
 ### `orderBook`
 
-Partial order book snapshots (top 20 bid/ask levels).
+Diff order book updates (bid/ask level changes) delivered at a configurable speed.
 **Realtime mode only.**
 
 | | Historical | Realtime |
 |---|---|---|
 | **Available** | ❌ | ✅ |
-| **Source** | — | `<symbol>@depth20@100ms` WebSocket stream |
+| **Source** | — | `<symbol>@depth20@<speed>` WebSocket stream |
 | **Clock** | — | None — clockless |
-| **Timestamp field** | — | `event_time` (unix ms); falls back to `last_update_id` when the stream omits it |
+| **Timestamp field** | — | `event_time` (unix ms from `"T"` field); falls back to `"u"` (final update ID) when absent |
 | **Schema** | — | `OrderBook` |
-| **Limitations** | No CSV equivalent on Binance Vision. | Snapshot-only — 20 levels, updated every 100 ms. Does not support full depth reconstruction. `event_time` may be `0` on endpoints that omit it; in that case `last_update_id` is used as a monotonic proxy and should not be treated as a wall-clock timestamp. |
+| **Limitations** | No CSV equivalent on Binance Vision. | Delivers **incremental diff updates**, not full snapshots. Levels with `quantity=0` mean the level was removed. To reconstruct a full order book, maintain local state and apply each update. `event_time` is a real unix-ms timestamp on futures streams; on spot streams it may be absent (falls back to `last_update_id`, a monotonic counter — use `has_real_timestamp()` to detect). |
 
-**Topic format:** `orderBook.<SYMBOL>` — e.g. `orderBook.BTCUSDT`
+**Speed options** (set via `supported_orderbook_speeds` in component capabilities):
+
+| Speed    | Update interval |
+|----------|----------------|
+| `100ms`  | Every 100 ms (default) |
+| `250ms`  | Every 250 ms |
+| `500ms`  | Every 500 ms |
+
+**Topic format:** `orderBook.<SYMBOL>.<speed>` — e.g. `orderBook.BTCUSDT.100ms`
 
 ---
 
@@ -145,8 +169,8 @@ Open interest, long/short ratios, and taker volume ratio snapshots.
 
 ## Summary table
 
-| Data type   | Historical | Realtime | Clock         |
-|-------------|:----------:|:--------:|:-------------:|
+| Data type   | Historical | Realtime | Clock           |
+|-------------|:----------:|:--------:|:---------------:|
 | `klines`    | ✅ | ✅ | Historical only |
 | `aggTrades` | ✅ | ✅ | Historical only |
 | `trades`    | ✅ | ✅ | Historical only |
@@ -168,7 +192,7 @@ use "orderBook" for live order book data
 
 Note that the schemas differ: `BookDepth` stores aggregated
 `percentage / depth / notional` values, while `OrderBook` stores raw
-bid/ask price levels.
+bid/ask price levels as incremental updates.
 
 ---
 
